@@ -1,0 +1,70 @@
+sequenceDiagram
+    autonumber
+
+    participant Outbox as Payment Outbox
+    participant Kafka
+    participant Processor as Payment Processor
+    participant Order as Order Service (Saga)
+    participant Ledger
+    participant Risk as Risk Engine
+    participant Balance
+    participant Notification
+    participant Merchant
+
+    Note over Outbox,Merchant: HTTP request has already returned 202 Accepted
+
+    %% ----------------------------------------------------
+    %% Payment Processing
+    %% ----------------------------------------------------
+
+    Outbox->>Kafka: Publish PaymentInitiated
+
+    Kafka->>Processor: PaymentInitiated
+
+    Processor->>Processor: Simulate Gateway Processing
+
+    alt Payment Successful
+
+        Processor->>Kafka: PaymentCompleted
+
+        Kafka->>Order: PaymentCompleted
+
+        %% Ledger
+        Order->>Ledger: RecordLedgerEntry
+
+        Ledger->>Kafka: LedgerEntryRecorded
+
+        Kafka->>Order: LedgerEntryRecorded
+
+        %% Eligibility
+        Order->>Risk: CheckPayoutEligibility
+
+        Risk-->>Order: EligibilityApproved
+
+        %% Balance
+        Order->>Balance: ReserveBalance
+
+        Balance->>Kafka: BalanceReserved
+
+        Kafka->>Order: BalanceReserved
+
+        %% Notification
+        Order->>Notification: NotifyMerchant
+
+        Notification->>Merchant: Payment Notification
+
+        Notification->>Kafka: MerchantNotified
+
+        Kafka->>Order: MerchantNotified
+
+        Note over Order: Saga Completed
+
+    else Payment Failed
+
+        Processor->>Kafka: PaymentFailed
+
+        Kafka->>Order: PaymentFailed
+
+        Note over Order: Saga Ends (No Compensation Required)
+
+    end

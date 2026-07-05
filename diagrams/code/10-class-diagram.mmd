@@ -1,0 +1,240 @@
+classDiagram
+direction LR
+
+%% =====================================================
+%% PAYMENT DOMAIN
+%% =====================================================
+
+class Payment {
+    +UUID paymentId
+    +UUID orderId
+    +UUID merchantId
+    +Money amount
+    +Currency currency
+    +PaymentStatus status
+    +String idempotencyKey
+    +UUID correlationId
+    +Instant createdAt
+    +markCompleted()
+    +markFailed()
+}
+
+class PaymentStatus {
+    <<enumeration>>
+    INITIATED
+    PENDING
+    COMPLETED
+    FAILED
+}
+
+Payment --> PaymentStatus
+
+%% =====================================================
+%% ORDER DOMAIN
+%% =====================================================
+
+class Order {
+    +UUID orderId
+    +UUID merchantId
+    +Money amount
+    +OrderStatus status
+    +validateForPayment()
+}
+
+class OrderStatus {
+    <<enumeration>>
+    CREATED
+    PAYABLE
+    PAID
+    CANCELLED
+}
+
+Order --> OrderStatus
+
+%% =====================================================
+%% SAGA
+%% =====================================================
+
+class PaymentSaga {
+    +UUID sagaId
+    +SagaState state
+    +UUID correlationId
+    +transition()
+    +compensate()
+}
+
+class SagaState {
+    <<enumeration>>
+    WAITING_FOR_PAYMENT
+    RECORDING_LEDGER
+    CHECKING_ELIGIBILITY
+    RESERVING_BALANCE
+    NOTIFYING_MERCHANT
+    COMPLETED
+    FAILED
+    COMPENSATING
+}
+
+PaymentSaga --> SagaState
+
+Payment --> PaymentSaga
+Order --> PaymentSaga
+
+%% =====================================================
+%% LEDGER
+%% =====================================================
+
+class LedgerEntry {
+    +UUID entryId
+    +UUID paymentId
+    +UUID merchantId
+    +Money amount
+    +EntryType type
+    +Instant createdAt
+}
+
+class EntryType {
+    <<enumeration>>
+    CREDIT
+    DEBIT
+    REVERSAL
+}
+
+LedgerEntry --> EntryType
+
+Payment --> LedgerEntry
+
+%% =====================================================
+%% BALANCE
+%% =====================================================
+
+class MerchantBalance {
+    +UUID merchantId
+    +Money available
+    +Money reserved
+    +reserve()
+    +release()
+    +credit()
+}
+
+LedgerEntry --> MerchantBalance
+
+%% =====================================================
+%% MERCHANT
+%% =====================================================
+
+class Merchant {
+    +UUID merchantId
+    +String businessName
+    +Boolean active
+}
+
+Merchant --> MerchantBalance
+Merchant --> Order
+Merchant --> Payment
+
+%% =====================================================
+%% OUTBOX
+%% =====================================================
+
+class OutboxEvent {
+    +UUID eventId
+    +String eventType
+    +UUID correlationId
+    +UUID sagaId
+    +String payload
+    +EventStatus status
+}
+
+class EventStatus {
+    <<enumeration>>
+    PENDING
+    PUBLISHED
+    FAILED
+}
+
+OutboxEvent --> EventStatus
+Payment --> OutboxEvent
+
+%% =====================================================
+%% INBOX
+%% =====================================================
+
+class InboxEvent {
+    +UUID eventId
+    +String eventType
+    +Instant processedAt
+}
+
+%% =====================================================
+%% EVENT ENVELOPE
+%% =====================================================
+
+class EventEnvelope {
+    +UUID eventId
+    +String eventType
+    +UUID correlationId
+    +UUID causationId
+    +UUID sagaId
+    +Instant timestamp
+    +Integer version
+}
+
+OutboxEvent --> EventEnvelope
+InboxEvent --> EventEnvelope
+
+%% =====================================================
+%% NOTIFICATION
+%% =====================================================
+
+class Notification {
+    +UUID notificationId
+    +UUID merchantId
+    +NotificationStatus status
+}
+
+class NotificationStatus {
+    <<enumeration>>
+    PENDING
+    SENT
+    FAILED
+}
+
+Notification --> NotificationStatus
+Merchant --> Notification
+
+%% =====================================================
+%% WEBHOOK
+%% =====================================================
+
+class WebhookDelivery {
+    +UUID deliveryId
+    +String endpoint
+    +DeliveryStatus status
+    +Integer retryCount
+}
+
+class DeliveryStatus {
+    <<enumeration>>
+    PENDING
+    DELIVERED
+    FAILED
+}
+
+WebhookDelivery --> DeliveryStatus
+Notification --> WebhookDelivery
+
+%% =====================================================
+%% AUDIT
+%% =====================================================
+
+class AuditRecord {
+    +UUID auditId
+    +String actor
+    +String action
+    +Instant timestamp
+}
+
+Payment --> AuditRecord
+Order --> AuditRecord
+Merchant --> AuditRecord

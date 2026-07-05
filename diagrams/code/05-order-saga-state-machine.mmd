@@ -1,0 +1,113 @@
+stateDiagram-v2
+    direction LR
+
+    [*] --> WaitingForPaymentCompleted
+
+    WaitingForPaymentCompleted --> RecordingLedger : PaymentCompleted
+
+    RecordingLedger --> WaitingForLedgerRecorded : RecordLedgerEntry
+
+    WaitingForLedgerRecorded --> CheckingEligibility : LedgerEntryRecorded
+
+    CheckingEligibility --> WaitingForEligibility : CheckPayoutEligibility
+
+    WaitingForEligibility --> ReservingBalance : EligibilityApproved
+
+    %% ------------------------------------------------
+    %% Scenario 1
+    %% Eligibility rejected
+    %% ------------------------------------------------
+    WaitingForEligibility --> ReversingLedger : EligibilityDenied
+
+    ReservingBalance --> WaitingForBalanceReserved : ReserveBalance
+
+    %% ------------------------------------------------
+    %% Scenario 2
+    %% Reservation never succeeded
+    %% ------------------------------------------------
+    WaitingForBalanceReserved --> ReversingLedger : BalanceReservationFailed
+
+    %% ------------------------------------------------
+    %% Reservation completed successfully
+    %% ------------------------------------------------
+    WaitingForBalanceReserved --> NotifyingMerchant : BalanceReserved
+
+    %% ------------------------------------------------
+    %% Scenario 3
+    %% Late fraud / compliance decision after reservation
+    %% is confirmed (NotifyingMerchant is only reached
+    %% once BalanceReserved has occurred)
+    %% ------------------------------------------------
+    NotifyingMerchant --> ReversingBalance : PaymentFlaggedFraudulent
+
+    NotifyingMerchant --> WaitingForNotification : NotifyMerchant
+
+    WaitingForNotification --> Completed : MerchantNotified
+
+    Completed --> [*]
+
+    %% =================================================
+    %% Compensation Flow
+    %% =================================================
+
+    ReversingBalance --> ReversingLedger : BalanceReservationReversed
+
+    ReversingLedger --> Reversed : LedgerEntryReversed
+
+    Reversed --> Closed
+
+    Closed --> [*]
+
+    %% =================================================
+    %% Notes
+    %% =================================================
+
+    note right of WaitingForPaymentCompleted
+        Saga instance is created earlier
+        and remains idle until the
+        PaymentCompleted event arrives.
+    end note
+
+    note right of NotifyingMerchant
+        Reached only after BalanceReserved,
+        so the payment is already
+        financially consistent here.
+        Notification failures never
+        trigger financial compensation.
+        Only exceptional post-reservation
+        business decisions (for example,
+        a late fraud/compliance decision)
+        may initiate compensation.
+    end note
+
+    note right of WaitingForNotification
+        MerchantNotified means the
+        Notification Service accepted
+        the NotifyMerchant command.
+        Webhook delivery, retries,
+        exponential backoff,
+        Dead Letter Queue processing,
+        and replay are handled
+        asynchronously by the
+        Notification/Webhook subsystem
+        and are outside this saga.
+    end note
+
+    note right of ReversingLedger
+        Compensation is history-aware.
+        Only successfully completed
+        financial operations are
+        compensated, in reverse order.
+        If balance reservation never
+        succeeded, balance reversal
+        is skipped.
+    end note
+
+    note right of Reversed
+        REVERSED indicates every
+        completed financial operation
+        has been successfully
+        compensated.
+        The saga then transitions
+        to CLOSED.
+    end note

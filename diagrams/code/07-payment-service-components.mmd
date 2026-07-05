@@ -1,0 +1,97 @@
+flowchart TB
+
+%% =====================================================
+%% API Layer
+%% =====================================================
+
+subgraph API["API Layer"]
+    Controller["Payment Controller"]
+end
+
+%% =====================================================
+%% Application Layer
+%% =====================================================
+
+subgraph APP["Application Layer"]
+
+    PaymentService["Payment Application Service"]
+
+end
+
+%% =====================================================
+%% Domain Layer
+%% =====================================================
+
+subgraph DOMAIN["Domain Layer"]
+
+    PaymentAggregate["Payment Aggregate"]
+
+    PaymentValidator["Payment Validator"]
+
+end
+
+%% =====================================================
+%% Infrastructure Layer
+%% =====================================================
+
+subgraph INFRA["Infrastructure Layer"]
+
+    PaymentRepository["Payment Repository"]
+
+    OutboxRepository["Outbox Repository"]
+
+    EventPublisher["Outbox Publisher"]
+
+    OrderClient["Order Service Client"]
+
+    FraudClient["Fraud Service Client"]
+
+    %% RiskClient["Risk Engine Client"]
+
+end
+
+%% =====================================================
+%% Database
+%% =====================================================
+
+subgraph DB["Payment Database"]
+
+    Payments[(payments)]
+
+    Outbox[(outbox_events)]
+
+end
+
+%% =====================================================
+%% Messaging
+%% =====================================================
+
+Kafka[(Kafka)]
+
+%% =====================================================
+%% Flow
+%% =====================================================
+
+Controller --> PaymentService
+
+PaymentService --> PaymentValidator
+
+PaymentService --> PaymentAggregate
+
+PaymentService --> OrderClient
+
+PaymentService --> FraudClient
+
+%% PaymentService --> RiskClient
+
+PaymentAggregate --> PaymentRepository
+
+PaymentAggregate --> OutboxRepository
+
+PaymentRepository --> Payments
+
+OutboxRepository --> Outbox
+
+EventPublisher --> Outbox
+
+EventPublisher --> Kafka

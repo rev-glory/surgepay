@@ -1,0 +1,34 @@
+stateDiagram-v2
+    direction LR
+
+    [*] --> Created : Payment Request Accepted
+
+    Created --> Processing : PaymentInitiated Published
+
+    Processing --> Completed : PaymentCompleted
+
+    Processing --> Failed : PaymentFailed
+
+    Completed --> [*]
+    Failed --> [*]
+
+    note right of Created
+        Payment record created
+        in the same transaction
+        as the Outbox entry.
+    end note
+
+    note right of Processing
+        Waiting for the simulated
+        Payment Processor to
+        publish the outcome.
+    end note
+
+    note right of Completed
+        Payment Service lifecycle ends.
+        Order Saga begins orchestration.
+    end note
+
+    note right of Failed
+        No saga orchestration occurs.
+    end note

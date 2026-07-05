@@ -1,0 +1,180 @@
+flowchart TB
+
+%% ==========================================================
+%% External Actors
+%% ==========================================================
+
+Client([Client])
+Merchant([Merchant])
+
+%% ==========================================================
+%% Platform Layer
+%% ==========================================================
+
+subgraph Platform["Platform Layer"]
+
+Gateway["API Gateway"]
+Idempotency["Idempotency Service"]
+MerchantSvc["Merchant Service"]
+
+end
+
+%% ==========================================================
+%% Core Business Layer
+%% ==========================================================
+
+subgraph Core["Core Business Layer"]
+
+Payment["Payment Service"]
+Order["Order Service\n(Aggregate + Saga)"]
+Risk["Risk Engine"]
+
+end
+
+%% ==========================================================
+%% Processing Layer
+%% ==========================================================
+
+subgraph Processing["Processing Layer"]
+
+FraudSync["Fraud Sync"]
+FraudAsync["Fraud Async"]
+Processor["Payment Processor\n(Simulator)"]
+
+end
+
+%% ==========================================================
+%% Financial Layer
+%% ==========================================================
+
+subgraph Finance["Financial Services"]
+
+Ledger["Ledger Service"]
+Balance["Balance Service"]
+
+end
+
+%% ==========================================================
+%% Communication Layer
+%% ==========================================================
+
+subgraph Communication["Merchant Communication"]
+
+Notification["Notification Service"]
+Webhook["Webhook Service"]
+
+end
+
+%% ==========================================================
+%% Operations Layer
+%% ==========================================================
+
+subgraph Operations["Operations"]
+
+Retry["Retry Scheduler"]
+Reconciliation["Reconciliation Service"]
+Audit["Audit Service"]
+Analytics["Analytics Service"]
+
+end
+
+%% ==========================================================
+%% Messaging
+%% ==========================================================
+
+Kafka[(Kafka / Redpanda)]
+
+%% ==========================================================
+%% Data Stores
+%% ==========================================================
+
+Redis[(Redis)]
+
+Postgres[(PostgreSQL<br/>One Database per Service)]
+
+%% ==========================================================
+%% Observability
+%% ==========================================================
+
+subgraph Observability
+
+OTel["OpenTelemetry"]
+
+Prometheus["Prometheus"]
+
+Grafana["Grafana"]
+
+end
+
+%% ==========================================================
+%% User Interaction
+%% ==========================================================
+
+Client --> Gateway
+Merchant --> Gateway
+
+%% ==========================================================
+%% Synchronous Request Path
+%% ==========================================================
+
+Gateway --> Idempotency
+Gateway --> MerchantSvc
+
+Idempotency --> Payment
+
+Payment --> Order
+Payment --> FraudSync
+%% Payment --> Risk
+
+%% ==========================================================
+%% Async Processing
+%% ==========================================================
+
+Payment --> Kafka
+
+Kafka --> Processor
+Kafka --> FraudAsync
+Kafka --> Order
+
+Order --> Ledger
+Order --> Risk
+Order --> Balance
+Order --> Notification
+
+Notification --> Webhook
+
+%% ==========================================================
+%% Operations
+%% ==========================================================
+
+Kafka --> Retry
+Kafka --> Reconciliation
+Kafka --> Audit
+Kafka --> Analytics
+
+%% ==========================================================
+%% Infrastructure
+%% ==========================================================
+
+Idempotency --- Redis
+
+Platform --- Postgres
+Core --- Postgres
+Processing --- Postgres
+Finance --- Postgres
+Communication --- Postgres
+Operations --- Postgres
+
+%% ==========================================================
+%% Observability
+%% ==========================================================
+
+Gateway -.-> OTel
+Payment -.-> OTel
+Order -.-> OTel
+Ledger -.-> OTel
+Balance -.-> OTel
+Notification -.-> OTel
+
+OTel --> Prometheus
+OTel --> Grafana
