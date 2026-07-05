@@ -1,0 +1,160 @@
+flowchart LR
+
+%%====================================================
+%% ORDER SERVICE
+%%====================================================
+
+subgraph ORDER["Order Service"]
+
+direction TB
+
+%%----------------------------------------------------
+%% API Layer
+%%----------------------------------------------------
+
+subgraph API["API Layer"]
+
+ValidationAPI["Payment Validation API"]
+
+end
+
+%%----------------------------------------------------
+%% DOMAIN
+%%----------------------------------------------------
+
+subgraph DOMAIN["Domain Layer"]
+
+OrderAggregate["Order Aggregate"]
+
+Saga["Saga Orchestrator"]
+
+StateMachine["Saga State Machine"]
+
+end
+
+%%----------------------------------------------------
+%% PERSISTENCE
+%%----------------------------------------------------
+
+subgraph PERSISTENCE["Persistence Layer"]
+
+OrderRepo["Order Repository"]
+
+SagaRepo["Saga Repository"]
+
+InboxRepo["Inbox Repository"]
+
+OutboxRepo["Outbox Repository"]
+
+end
+
+%%----------------------------------------------------
+%% MESSAGING
+%%----------------------------------------------------
+
+subgraph EVENTS["Messaging"]
+
+KafkaConsumer["Kafka Consumers"]
+
+KafkaProducer["Kafka Producers"]
+
+OutboxPublisher["Outbox Publisher"]
+
+end
+
+%%----------------------------------------------------
+%% INFRASTRUCTURE
+%%----------------------------------------------------
+
+subgraph INFRA["Infrastructure"]
+
+InboxProcessor["Inbox Pattern"]
+
+OutboxProcessor["Outbox Pattern"]
+
+RetryClient["Retry Scheduler Client"]
+
+Telemetry["OpenTelemetry"]
+
+Logger["Structured Logger"]
+
+end
+
+end
+
+%%====================================================
+%% DATABASE
+%%====================================================
+
+subgraph DB["Order Database"]
+
+OrderTable[(orders)]
+
+SagaTable[(payment_sagas)]
+
+InboxTable[(inbox_events)]
+
+OutboxTable[(outbox_events)]
+
+end
+
+%%====================================================
+%% KAFKA
+%%====================================================
+
+Kafka[(Redpanda)]
+
+%%====================================================
+%% FLOW
+%%====================================================
+
+ValidationAPI --> OrderAggregate
+
+KafkaConsumer --> InboxProcessor
+
+InboxProcessor --> Saga
+
+Saga --> StateMachine
+
+Saga --> OrderAggregate
+
+OrderAggregate --> OrderRepo
+
+Saga --> SagaRepo
+
+InboxProcessor --> InboxRepo
+
+Saga --> OutboxRepo
+
+OutboxRepo --> OutboxPublisher
+
+OutboxPublisher --> KafkaProducer
+
+KafkaProducer --> Kafka
+
+Kafka --> KafkaConsumer
+
+OrderRepo --> OrderTable
+
+SagaRepo --> SagaTable
+
+InboxRepo --> InboxTable
+
+OutboxRepo --> OutboxTable
+
+%%====================================================
+%% OBSERVABILITY
+%%====================================================
+
+ValidationAPI -. Logs .-> Logger
+Saga -. Logs .-> Logger
+
+ValidationAPI -. Metrics .-> Telemetry
+Saga -. Metrics .-> Telemetry
+
+OutboxPublisher -. Metrics .-> Telemetry
+
+KafkaConsumer -. Traces .-> Telemetry
+KafkaProducer -. Traces .-> Telemetry
+
+RetryClient -. Traces .-> Telemetry

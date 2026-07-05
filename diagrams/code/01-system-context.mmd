@@ -1,0 +1,29 @@
+flowchart TB
+
+%% ==========================
+%% External Users
+%% ==========================
+
+Client([Client])
+
+Merchant([Merchant])
+
+%% ==========================
+%% System Boundary
+%% ==========================
+
+subgraph SurgePay["SurgePay Platform"]
+    System["Distributed Payment Orchestration Platform"]
+end
+
+%% ==========================
+%% Relationships
+%% ==========================
+
+Client -->|"Create Payment"| System
+Client -->|"Check Payment Status"| System
+
+Merchant -->|"Create & Manage Orders"| System
+
+System -->|"Payment Notifications"| Merchant
+System -->|"Webhook Callbacks"| Merchant

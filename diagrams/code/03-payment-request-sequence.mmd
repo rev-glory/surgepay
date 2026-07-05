@@ -1,0 +1,64 @@
+sequenceDiagram
+    autonumber
+
+    actor Client
+
+    participant Gateway as API Gateway
+    participant Idempotency as Idempotency Service
+    participant Redis
+    participant Payment as Payment Service
+    participant Order as Order Service
+    participant Fraud as Fraud Sync
+    participant DB as Payment DB
+    participant Outbox
+
+    Client->>Gateway: POST /payments\n(Idempotency-Key)
+
+    Gateway->>Idempotency: Validate Idempotency-Key
+
+    Idempotency->>Redis: Lookup Key
+
+    alt Request Already Completed
+
+        Redis-->>Idempotency: Cached Response
+        Idempotency-->>Gateway: Return Cached Response
+        Gateway-->>Client: Previous Result
+
+    else Request In Progress
+
+        Redis-->>Idempotency: IN_PROGRESS
+        Idempotency-->>Gateway: 409 Conflict
+        Gateway-->>Client: Request Already Processing
+
+    else First Request
+
+        Redis-->>Idempotency: MISS
+
+        Idempotency->>Payment: Create Payment
+
+        Payment->>Order: Validate Order
+
+        Order-->>Payment: Order Valid
+
+        Payment->>Fraud: Pre-check
+
+        Fraud-->>Payment: PASS
+
+        rect rgb(240,240,240)
+            Note over Payment,Outbox: Single Database Transaction
+
+            Payment->>DB: Insert Payment
+
+            Payment->>Outbox: Insert PaymentInitiated Event
+
+        end
+
+        Payment-->>Idempotency: Payment Accepted
+
+        Idempotency->>Redis: Store Completed Response
+
+        Idempotency-->>Gateway: 202 Accepted
+
+        Gateway-->>Client: Payment Accepted
+
+    end

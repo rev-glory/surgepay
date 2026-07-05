@@ -1,0 +1,219 @@
+flowchart TB
+
+%%==========================================================
+%% CLIENTS
+%%==========================================================
+
+subgraph CLIENTS["External Clients"]
+
+Client["Client Application"]
+
+Merchant["Merchant Portal"]
+
+end
+
+%%==========================================================
+%% HOST
+%%==========================================================
+
+subgraph HOST["Docker Host / VM"]
+
+direction TB
+
+%%==========================================================
+%% NETWORK
+%%==========================================================
+
+subgraph NETWORK["Docker Network"]
+
+direction TB
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% EDGE
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+subgraph EDGE["Edge"]
+
+Gateway["API Gateway"]
+
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% APPLICATION SERVICES
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+subgraph SERVICES["Application Services"]
+
+direction LR
+
+subgraph PLATFORM["Platform"]
+
+MerchantSvc["Merchant Service"]
+
+Idempotency["Idempotency Service"]
+
+end
+
+subgraph CORE["Core"]
+
+Payment["Payment Service"]
+
+Order["Order Service"]
+
+Risk["Risk Engine"]
+
+end
+
+subgraph PROCESSING["Processing"]
+
+FraudSync["Fraud Sync"]
+
+FraudAsync["Fraud Async"]
+
+Processor["Payment Processor Simulator"]
+
+end
+
+subgraph FINANCE["Financial"]
+
+Ledger["Ledger Service"]
+
+Balance["Balance Service"]
+
+end
+
+subgraph COMM["Communication"]
+
+Notification["Notification Service"]
+
+Webhook["Webhook Service"]
+
+end
+
+subgraph OPS["Operations"]
+
+Retry["Retry Scheduler"]
+
+Reconciliation["Reconciliation"]
+
+Audit["Audit"]
+
+Analytics["Analytics"]
+
+end
+
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% DATA LAYER
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+subgraph DATA["Data Layer"]
+
+direction LR
+
+subgraph PG["PostgreSQL Cluster"]
+
+PaymentDB[(payment_db)]
+
+OrderDB[(order_db)]
+
+MerchantDB[(merchant_db)]
+
+LedgerDB[(ledger_db)]
+
+BalanceDB[(balance_db)]
+
+NotificationDB[(notification_db)]
+
+WebhookDB[(webhook_db)]
+
+AuditDB[(audit_db)]
+
+AnalyticsDB[(analytics_db)]
+
+end
+
+Redis[(Redis)]
+
+Kafka[(Redpanda Cluster)]
+
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% OBSERVABILITY
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+subgraph OBS["Observability"]
+
+direction LR
+
+OTel["OpenTelemetry Collector"]
+
+Prometheus[(Prometheus)]
+
+Grafana["Grafana"]
+
+Jaeger["Jaeger"]
+
+end
+
+end
+
+end
+
+%%==========================================================
+%% CLIENT ACCESS
+%%==========================================================
+
+Client --> Gateway
+
+Merchant --> Gateway
+
+Gateway --> SERVICES
+
+%%==========================================================
+%% DATABASE OWNERSHIP
+%%==========================================================
+
+Payment -. owns .-> PaymentDB
+
+Order -. owns .-> OrderDB
+
+MerchantSvc -. owns .-> MerchantDB
+
+Ledger -. owns .-> LedgerDB
+
+Balance -. owns .-> BalanceDB
+
+Notification -. owns .-> NotificationDB
+
+Webhook -. owns .-> WebhookDB
+
+Audit -. owns .-> AuditDB
+
+Analytics -. owns .-> AnalyticsDB
+
+%%==========================================================
+%% REDIS
+%%==========================================================
+
+Idempotency -. cache .-> Redis
+
+%%==========================================================
+%% KAFKA
+%%==========================================================
+
+SERVICES -. publish / consume .-> Kafka
+
+%%==========================================================
+%% OBSERVABILITY
+%%==========================================================
+
+SERVICES -. traces .-> OTel
+
+OTel --> Jaeger
+
+OTel --> Prometheus
+
+Prometheus --> Grafana
