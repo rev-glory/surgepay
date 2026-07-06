@@ -7,41 +7,43 @@ export interface DatabaseConfig {
   database?: string;
   schema?: string;
   ssl?: boolean;
+  poolSize: number;
+  connectTimeout: number;
+  idleTimeout: number;
 }
 
 export interface RedisConfig {
-  host: string;
-  port: number;
+  url: string;
   password?: string;
-  db?: number;
-  keyPrefix?: string;
+  tls: boolean;
 }
 
 export interface KafkaConfig {
   brokers: string[];
   clientId: string;
-  groupId: string;
-  ssl?: boolean;
-  connectionTimeout?: number;
-  requestTimeout?: number;
-}
-
-export interface LoggingConfig {
-  level: 'debug' | 'info' | 'warn' | 'error';
-  format: 'json' | 'pretty';
-  colorize?: boolean;
-}
-
-export interface OpenTelemetryConfig {
-  serviceName: string;
-  enabled: boolean;
-  collectorUrl: string;
-  tracesEndpoint?: string;
-  metricsEndpoint?: string;
+  ssl: boolean;
+  sasl: boolean;
 }
 
 export interface HttpConfig {
   port: number;
   host: string;
-  corsOrigin?: string | string[];
+  apiPrefix: string;
+}
+
+export interface LoggingConfig {
+  level: 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+  pretty: boolean;
+  serviceName: string;
+}
+
+export interface TelemetryConfig {
+  endpoint: string;
+  serviceName: string;
+}
+
+export interface SecurityConfig {
+  jwtSecret: string;
+  apiKeyHeader: string;
+  corsEnabled: boolean;
 }
