@@ -12,5 +12,12 @@
     "clean": "rimraf dist",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write \"src/**/*.ts\""
+  },
+  "dependencies": {
+    "tslib": "^2.6.2",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/uuid": "^10.0.0"
   }
 }
