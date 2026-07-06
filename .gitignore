@@ -190,9 +190,18 @@ credentials/
 
 
 # =====================================================
-# AI Project Documentation (Local Only)
+# Prisma & Turborepo
+# =====================================================
+
+.prisma
+generated/
+.turbo/
+
+# =====================================================
+# Project Documentation (Local Only)
 # =====================================================
 
 AGENTS.md
-doc-v3.docx
+commits.txt
 doc-v3.txt
+verification_report.md
