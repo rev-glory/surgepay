@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { HealthCheckError, HealthIndicator, HealthIndicatorResult } from '@nestjs/terminus';
+import { Admin, Kafka } from 'kafkajs';
+
 import { ConfigService } from '@surgepay/config';
-import { Kafka } from 'kafkajs';
 
 import { TIMEOUTS } from '../constants';
 
@@ -14,7 +15,7 @@ export class KafkaHealthIndicator extends HealthIndicator {
   }
 
   async isHealthy(key: string): Promise<HealthIndicatorResult> {
-    let admin: any = null;
+    let admin: Admin | null = null;
     try {
       const kafkaConfig = this.configService.kafka;
       if (!kafkaConfig || !kafkaConfig.brokers || kafkaConfig.brokers.length === 0) {
@@ -45,14 +46,17 @@ export class KafkaHealthIndicator extends HealthIndicator {
       }
 
       return this.getStatus(key, true);
-    } catch (error: any) {
-      const result = this.getStatus(key, false, { message: error.message });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      const result = this.getStatus(key, false, { message: err.message });
       throw new HealthCheckError('Kafka health check failed', result);
     } finally {
       if (admin) {
         try {
           await admin.disconnect();
-        } catch (_e) {}
+        } catch (_e) {
+          // Ignore disconnect errors in finally block
+        }
       }
     }
   }

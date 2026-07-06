@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { HealthCheckError, HealthIndicator, HealthIndicatorResult } from '@nestjs/terminus';
+
 import { ConfigService } from '@surgepay/config';
 
 @Injectable()
@@ -20,8 +21,9 @@ export class ConfigHealthIndicator extends HealthIndicator {
       }
 
       return this.getStatus(key, true);
-    } catch (error: any) {
-      const result = this.getStatus(key, false, { message: error.message });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      const result = this.getStatus(key, false, { message: err.message });
       throw new HealthCheckError('Configuration check failed', result);
     }
   }

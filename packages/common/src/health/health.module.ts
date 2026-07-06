@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TerminusModule } from '@nestjs/terminus';
+
 import { ConfigModule } from '@surgepay/config';
 
 import { LoggerModule } from '../logger/logger.module';

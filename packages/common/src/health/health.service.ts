@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+
 import { ConfigService } from '@surgepay/config';
 
 import { LoggerService } from '../logger/logger.service';
@@ -60,13 +61,14 @@ export class HealthService {
         if (status === HEALTH_STATUS.FAILED) {
           overallStatus = HEALTH_STATUS.DOWN;
         }
-      } catch (error: any) {
+      } catch (error) {
         checks[key] = HEALTH_STATUS.FAILED;
         overallStatus = HEALTH_STATUS.DOWN;
 
+        const err = error instanceof Error ? error : new Error(String(error));
         this.logger.error(`Health check failed for dependency: ${key}`, {
-          error: error.message,
-          stack: error.stack,
+          error: err.message,
+          stack: err.stack,
         });
       }
     }

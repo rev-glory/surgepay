@@ -1,7 +1,8 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { HealthCheckError, HealthIndicator, HealthIndicatorResult } from '@nestjs/terminus';
-import { ConfigService } from '@surgepay/config';
 import Redis from 'ioredis';
+
+import { ConfigService } from '@surgepay/config';
 
 import { TIMEOUTS } from '../constants';
 
@@ -36,10 +37,11 @@ export class RedisHealthIndicator extends HealthIndicator implements OnModuleDes
       }
 
       return this.getStatus(key, true);
-    } catch (error: any) {
+    } catch (error) {
       // Release client on connection failures to trigger recreation on next check
-      this.cleanupClient();
-      const result = this.getStatus(key, false, { message: error.message });
+      void this.cleanupClient();
+      const err = error instanceof Error ? error : new Error(String(error));
+      const result = this.getStatus(key, false, { message: err.message });
       throw new HealthCheckError('Redis health check failed', result);
     }
   }
@@ -55,7 +57,9 @@ export class RedisHealthIndicator extends HealthIndicator implements OnModuleDes
       } catch (_e) {
         try {
           this.redisClient.disconnect();
-        } catch (_err) {}
+        } catch (_err) {
+          // Ignore disconnect errors
+        }
       }
       this.redisClient = null;
     }
