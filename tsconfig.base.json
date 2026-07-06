@@ -14,6 +14,9 @@
     "incremental": true,
     "skipLibCheck": true,
     "strict": true,
+    "strictPropertyInitialization": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
     "strictBindCallApply": true,
@@ -24,14 +27,24 @@
     "resolveJsonModule": true,
     "baseUrl": "./",
     "paths": {
+      "@common": ["packages/common/src"],
+      "@common/*": ["packages/common/src/*"],
       "@surgepay/common": ["packages/common/src"],
       "@surgepay/common/*": ["packages/common/src/*"],
+      "@contracts": ["packages/contracts/src"],
+      "@contracts/*": ["packages/contracts/src/*"],
       "@surgepay/contracts": ["packages/contracts/src"],
       "@surgepay/contracts/*": ["packages/contracts/src/*"],
+      "@events": ["packages/events/src"],
+      "@events/*": ["packages/events/src/*"],
       "@surgepay/events": ["packages/events/src"],
       "@surgepay/events/*": ["packages/events/src/*"],
+      "@config": ["packages/config/src"],
+      "@config/*": ["packages/config/src/*"],
       "@surgepay/config": ["packages/config/src"],
-      "@surgepay/config/*": ["packages/config/src/*"]
+      "@surgepay/config/*": ["packages/config/src/*"],
+      "@shared": ["packages/common/src"],
+      "@shared/*": ["packages/common/src/*"]
     }
   },
   "exclude": ["node_modules", "dist"]
