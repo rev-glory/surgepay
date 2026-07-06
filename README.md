@@ -81,15 +81,17 @@ surgepay/
 │   ├── analytics-service/       # Operational Analytics
 │   └── reconciliation-service/  # Discrepancy Auditing
 ├── packages/                    # Shared Monorepo Packages
-│   ├── common/                  # Shared utilities, filters, and standard logger
+│   ├── common/                  # Shared utilities, health checks, and standard logger
 │   ├── config/                  # Shared environment and config schemes
 │   ├── contracts/               # Shared HTTP/RPC DTOs and API specifications
+│   ├── database/                # Shared Prisma client, schemas, migrations, and seeds
 │   └── events/                  # Shared Kafka Event envelope and schemas
-├── docker/                      # Dockerfiles and infrastructure environments
+├── docker/                      # Docker files and container compose stack
+├── infrastructure/              # Deployment orchestration (Helm, Terraform, etc.)
 ├── docs/                        # Project design documentation and specs
 ├── scripts/                     # Utility scripts for local dev, seeds, and migrations
 ├── diagrams/                    # System architecture Mermaid designs & PNGs
-└── .github/                     # Issue and PR templates
+└── .github/                     # Issue, PR templates and CI/CD GitHub Action workflows
 ```
 
 ---
@@ -97,25 +99,90 @@ surgepay/
 ## 5. Getting Started
 
 ### Local Setup
-Ensure you have **Node.js (v20+)** and **pnpm (v9+)** installed.
+Ensure you have **Node.js (>=20.0.0)**, **pnpm (>=9.0.0)**, and **Docker** installed.
 
+#### 1. Clone the Repository
 ```bash
-# Install dependencies across the monorepo workspace
-pnpm install
-
-# Build all packages and services
-pnpm build
-
-# Run all services in development mode
-pnpm dev
+git clone <repository_url>
+cd surgepay
 ```
 
-> [!NOTE]
-> Docker Compose environment files and configuration for Redpanda, Redis, and PostgreSQL infrastructure will be introduced in subsequent commits.
+#### 2. Install Dependencies
+```bash
+pnpm install
+```
+
+#### 3. Environment Configuration
+Copy the development environment template to create your local environment file:
+```bash
+cp .env.example .env.development
+```
+Verify the default values inside `.env.development` are correct for your local setup.
+
+#### 4. Start Infrastructure
+Launch the local Docker containers:
+```bash
+cd docker
+docker compose up -d
+cd ..
+```
+Wait for all containers to report healthy. You can verify this by running `docker ps`.
+
+#### 5. Verify Workspace Setup
+You can verify the TypeScript compilation of all shared packages:
+```bash
+pnpm build
+```
 
 ---
 
-## 6. Development Workflow
+## 6. Docker Services
+
+The SurgePay platform depends on the following dockerized services to support high-reliability orchestrations and monitoring:
+
+* **PostgreSQL** (Port `5432`): Provides isolated databases and schemas for each microservice, enforcing strict data ownership boundaries.
+* **Redis** (Port `6379`): Backs the Idempotency Service to intercept duplicate HTTP requests at the gateway level.
+* **Redpanda** (Port `9092`/`29092`): Kafka-compatible message broker that handles all asynchronous microservice event streams.
+* **Kafka UI** (Port `8080`): Web-based user interface to monitor Redpanda clusters, topics, consumers, and message envelopes.
+* **Prometheus** (Port `9090`): Time-series database that pulls metrics emitted from the platform microservices.
+* **Grafana** (Port `3000`): Visualization dashboard displaying real-time metrics, SLOs, and alert indicators.
+* **OpenTelemetry Collector** (Port `4317`/`4318`): Core routing pipeline to ingest distributed traces and logs from active services and forward them to downstream storage backends.
+
+---
+
+## 7. Development Commands
+
+Common workspace tasks can be run directly using Turborepo and pnpm scripts at the root level:
+
+```bash
+# Clean build artifacts, dist files, and node_modules recursively
+pnpm clean
+
+# Install workspace dependencies
+pnpm install
+
+# Build all shared packages and verify TypeScript compilation
+pnpm build
+
+# Run formatting checks on TypeScript files
+pnpm format
+
+# Run linter checks (ESLint flat configuration)
+pnpm lint
+
+# Run automated tests across all packages
+pnpm test
+
+# Start dockerized infrastructure in the background
+cd docker && docker compose up -d
+
+# Stop running dockerized infrastructure
+cd docker && docker compose down
+```
+
+---
+
+## 8. Development Workflow
 
 - **Feature-Driven**: All work is mapped to Git feature branches. Direct commits to `main` are disabled.
 - **Code Reviews**: Every pull request requires review and approval from at least one engineer.
@@ -123,7 +190,7 @@ pnpm dev
 
 ---
 
-## 7. Branch Strategy
+## 9. Branch Strategy
 
 We follow a trunk-based development strategy centered directly around the `main` branch.
 
@@ -147,7 +214,7 @@ Delete feature branch
 
 ---
 
-## 8. Conventional Commit Examples
+## 10. Conventional Commit Examples
 
 We use standard Conventional Commits scopes to identify affected modules.
 
@@ -160,25 +227,57 @@ We use standard Conventional Commits scopes to identify affected modules.
 
 ---
 
-## 9. Useful Commands
+## 11. Troubleshooting
 
-```bash
-# Clean build artifacts and node_modules
-pnpm clean
+If you run into issues during workspace setup, use the following guidelines:
 
-# Run linters across the workspace
-pnpm lint
-
-# Format code using Prettier rules
-pnpm format
-
-# Run test suites
-pnpm test
-```
+* **Docker Not Running**:
+  - *Symptom*: Docker compose commands hang or error with `cannot connect to Docker daemon`.
+  - *Solution*: Start the Docker Desktop client or systemd service (`sudo systemctl start docker`).
+* **Port Conflicts (e.g. 5432 or 6379)**:
+  - *Symptom*: Container fails to start because a port is already in use.
+  - *Solution*: Identify the conflicting process (e.g. a local PostgreSQL or Redis server running natively) and stop it, or update host ports in `.env.development` and `docker-compose.yml`.
+* **Missing Environment Variables**:
+  - *Symptom*: Setup scripts throw configuration schema validation errors.
+  - *Solution*: Ensure you copied `.env.example` to `.env.development` and that the file is present in the workspace root.
+* **Failed Dependency Installation**:
+  - *Symptom*: `pnpm install` fails due to lockfile or resolution conflicts.
+  - *Solution*: Run `pnpm clean` to wipe build caches and try running `pnpm install` again.
+* **pnpm Workspace Issues**:
+  - *Symptom*: Packages cannot resolve imports from neighbor workspace libraries (e.g. `@surgepay/common`).
+  - *Solution*: Run `pnpm build` at the root level to compile shared packages and generate declaration files (`dist/` folder outputs), which allows TypeScript path aliases to resolve correctly.
+* **Container Startup Failures**:
+  - *Symptom*: Individual containers (like Redpanda or Grafana) restart in loops.
+  - *Solution*: Run `docker compose logs <container-name>` to view specific container logs. Ensure you have allocated sufficient resource limits (e.g., memory) to Docker Desktop.
 
 ---
 
-## 10. Future Roadmap
+## 12. First Contribution Guide
+
+Welcome to the SurgePay development team! Follow this checklist to complete your first contribution:
+
+1. **Clone the repository** to your local machine:
+   `git clone <repository_url>`
+2. **Install workspace dependencies**:
+   `pnpm install`
+3. **Start local infrastructure**:
+   `cd docker && docker compose up -d && cd ..`
+4. **Verify package compilation**:
+   `pnpm build`
+5. **Create a feature branch** from `main`:
+   `git checkout -b feature/your-feature-name`
+6. **Implement your changes** inside the appropriate directories (abiding by design doc and AGENT.md guidelines).
+7. **Run local quality checks**:
+   `pnpm lint && pnpm build && pnpm test`
+8. **Format your code**:
+   `pnpm format`
+9. **Commit changes** following Conventional Commit conventions:
+   `git commit -m "feat(service): describe your changes"`
+10. **Push your branch** to the remote repository and **open a Pull Request** to `main` for review.
+
+---
+
+## 13. Future Roadmap
 
 Our implementation plan proceeds incrementally in the following phases:
 1. **Infrastructure**: Setup Docker Compose for databases, Redis, and Redpanda brokers.
@@ -191,7 +290,7 @@ Our implementation plan proceeds incrementally in the following phases:
 
 ---
 
-## 11. Architecture Diagrams
+## 14. Architecture Diagrams
 
 > **Source of truth:** The Mermaid source for each diagram lives in [`diagrams/code/`](diagrams/code/). The PNGs in [`diagrams/images/`](diagrams/images/) are generated from those `.mmd` files. If the two ever diverge, the Mermaid source takes precedence.
 
