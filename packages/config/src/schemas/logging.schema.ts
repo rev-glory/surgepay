@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const loggingSchema = z.object({
-  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'fatal']).default('info'),
+  LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   LOG_PRETTY: z.preprocess(
     (val) => val === 'true',
     z.boolean().default(false)

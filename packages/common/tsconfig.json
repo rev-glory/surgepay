@@ -2,7 +2,17 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "paths": {
+      "@common": ["./src"],
+      "@common/*": ["./src/*"],
+      "@surgepay/common": ["./src"],
+      "@surgepay/common/*": ["./src/*"],
+      "@shared": ["./src"],
+      "@shared/*": ["./src/*"],
+      "@surgepay/config": ["packages/config/dist/index"],
+      "@surgepay/config/*": ["packages/config/dist/*"]
+    }
   },
   "include": ["src/**/*"]
 }

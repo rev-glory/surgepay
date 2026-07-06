@@ -32,7 +32,7 @@ export interface HttpConfig {
 }
 
 export interface LoggingConfig {
-  level: 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+  level: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
   pretty: boolean;
   serviceName: string;
 }
