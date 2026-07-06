@@ -14,7 +14,7 @@
     "lint": "turbo run lint",
     "format": "turbo run format",
     "test": "turbo run test",
-    "clean": "turbo run clean && rimraf node_modules apps/*/node_modules packages/*/node_modules apps/*/dist packages/*/dist"
+    "clean": "turbo run clean && rimraf --glob node_modules \"apps/*/node_modules\" \"packages/*/node_modules\" \"apps/*/dist\" \"packages/*/dist\""
   },
   "devDependencies": {
     "@commitlint/cli": "^19.3.0",
