@@ -3,6 +3,7 @@ import * as path from 'path';
 
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as dotenv from 'dotenv';
 
 // Manual bootstrap phase to load the environment variables from the correct workspace level env file
@@ -90,6 +91,20 @@ async function bootstrap(): Promise<void> {
   const port =
     process.env.PORT && process.env.PORT !== '3000' ? parseInt(process.env.PORT, 10) : 3002;
   const host = configService.http.host || '0.0.0.0';
+
+  // Configure Swagger OpenAPI generation
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('SurgePay Idempotency Service')
+    .setDescription('Internal platform service backed by Redis that guarantees request-level idempotency and prevents duplicate payments and transactions.')
+    .setVersion('1.0.0')
+    .setContact('SurgePay Support Placeholder', '', '')
+    .setLicense('MIT', 'https://opensource.org/licenses/MIT')
+    .addTag('Internal Idempotency', 'Internal APIs to check and record HTTP request idempotency status')
+    .addServer(`http://${host}:${port}`, 'Internal Idempotency Service Server')
+    .build();
+
+  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('swagger', app, swaggerDocument);
 
   await app.listen(port, host);
   logger.info(

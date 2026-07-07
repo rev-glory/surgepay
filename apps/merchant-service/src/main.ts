@@ -3,6 +3,7 @@ import * as path from 'path';
 
 import { VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as dotenv from 'dotenv';
 
 // Manual bootstrap phase to load the environment variables from the correct workspace level env file
@@ -85,6 +86,29 @@ async function bootstrap(): Promise<void> {
     ? parseInt(process.env.PORT, 10)
     : 3001;
   const host = configService.http.host || '0.0.0.0';
+
+  // Configure Swagger OpenAPI generation
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('SurgePay Merchant Service')
+    .setDescription('Internal platform service managing merchant records, API credentials, configuration settings, and webhooks validation.')
+    .setVersion('1.0.0')
+    .setContact('SurgePay Support Placeholder', '', '')
+    .setLicense('MIT', 'https://opensource.org/licenses/MIT')
+    .addTag('Internal Merchants', 'Internal APIs for merchant credential validation and details retrieval')
+    .addServer(`http://${host}:${port}`, 'Internal Merchant Service Server')
+    .addApiKey(
+      {
+        type: 'apiKey',
+        name: 'x-api-key',
+        in: 'header',
+        description: 'Internal API Key passed in the headers to check validation',
+      },
+      'X-API-Key',
+    )
+    .build();
+
+  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('swagger', app, swaggerDocument);
 
   await app.listen(port, host);
   logger.info(`Merchant Service started successfully on http://${host}:${port}/${prefix}/v${defaultVersion}`);

@@ -3,6 +3,7 @@ import * as path from 'path';
 
 import { VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as dotenv from 'dotenv';
 
 // Manual bootstrap phase to load the environment variables from the correct workspace level env file
@@ -82,6 +83,38 @@ async function bootstrap(): Promise<void> {
 
   const port = configService.http.port || 3000;
   const host = configService.http.host || '0.0.0.0';
+
+  // Configure Swagger OpenAPI generation
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('SurgePay API Gateway')
+    .setDescription('The API Gateway serves as the single public entry point for the SurgePay platform. It handles API authentication, rate limiting, request validation, and proxying mutating requests downstream.')
+    .setVersion('1.0.0')
+    .setContact('SurgePay Support Placeholder', '', '')
+    .setLicense('MIT', 'https://opensource.org/licenses/MIT')
+    .addTag('Payments', 'Exposes mutating public endpoints to process transactions')
+    .addServer(`http://${host}:${port}`, 'Local Development Server')
+    .addApiKey(
+      {
+        type: 'apiKey',
+        name: 'x-api-key',
+        in: 'header',
+        description: 'Authentication key provided to the merchant',
+      },
+      'X-API-Key',
+    )
+    .addGlobalParameters({
+      name: 'x-request-id',
+      in: 'header',
+      required: false,
+      description: 'Optional request tracing tracking identifier',
+      schema: {
+        type: 'string',
+      },
+    })
+    .build();
+
+  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('swagger', app, swaggerDocument);
 
   await app.listen(port, host);
   logger.info(`API Gateway started successfully on http://${host}:${port}/${prefix}/v${defaultVersion}`);
