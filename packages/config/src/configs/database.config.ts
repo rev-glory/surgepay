@@ -12,6 +12,10 @@ export default registerAs('database', (): DatabaseConfig => ({
   schema: process.env.DATABASE_SCHEMA,
   ssl: process.env.DATABASE_SSL === 'true',
   poolSize: process.env.DATABASE_POOL_SIZE ? parseInt(process.env.DATABASE_POOL_SIZE, 10) : 10,
-  connectTimeout: process.env.DATABASE_CONNECT_TIMEOUT ? parseInt(process.env.DATABASE_CONNECT_TIMEOUT, 10) : 5000,
-  idleTimeout: process.env.DATABASE_IDLE_TIMEOUT ? parseInt(process.env.DATABASE_IDLE_TIMEOUT, 10) : 30000,
+  connectTimeout: process.env.DATABASE_CONNECT_TIMEOUT
+    ? parseInt(process.env.DATABASE_CONNECT_TIMEOUT, 10)
+    : 5000,
+  idleTimeout: process.env.DATABASE_IDLE_TIMEOUT
+    ? parseInt(process.env.DATABASE_IDLE_TIMEOUT, 10)
+    : 30000,
 }));

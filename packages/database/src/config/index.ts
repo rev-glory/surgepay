@@ -14,10 +14,13 @@ export const DEFAULT_POOL_CONFIG: ConnectionPoolConfig = {
 /**
  * Appends query parameters for connection pooling and schema isolation to the database connection URL.
  */
-export function buildDatabaseUrl(baseUrl: string, config: ConnectionPoolConfig = DEFAULT_POOL_CONFIG): string {
+export function buildDatabaseUrl(
+  baseUrl: string,
+  config: ConnectionPoolConfig = DEFAULT_POOL_CONFIG,
+): string {
   try {
     const url = new URL(baseUrl);
-    
+
     if (config.connectionLimit !== undefined && !url.searchParams.has('connection_limit')) {
       url.searchParams.set('connection_limit', config.connectionLimit.toString());
     }
@@ -30,7 +33,7 @@ export function buildDatabaseUrl(baseUrl: string, config: ConnectionPoolConfig =
     if (config.schema !== undefined && !url.searchParams.has('schema')) {
       url.searchParams.set('schema', config.schema);
     }
-    
+
     return url.toString();
   } catch (_e) {
     // Fallback if URL is a placeholder or not a valid URL structure

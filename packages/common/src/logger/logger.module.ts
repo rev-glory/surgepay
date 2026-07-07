@@ -18,12 +18,7 @@ import { RequestContextService } from './request-context.service';
       useFactory: (configService: ConfigService) => getPinoConfig(configService),
     }),
   ],
-  providers: [
-    LoggerService,
-    RequestContextService,
-    LoggingInterceptor,
-    ExceptionLoggingFilter,
-  ],
+  providers: [LoggerService, RequestContextService, LoggingInterceptor, ExceptionLoggingFilter],
   exports: [
     LoggerService,
     RequestContextService,

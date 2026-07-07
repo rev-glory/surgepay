@@ -8,9 +8,11 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthMiddleware } from './auth/auth.middleware';
 import { AuthModule } from './auth/auth.module';
+import { RateLimitMiddleware } from './rate-limit/rate-limit.middleware';
+import { RateLimitModule } from './rate-limit/rate-limit.module';
 
 @Module({
-  imports: [ConfigModule, LoggerModule, HealthModule, AuthModule],
+  imports: [ConfigModule, LoggerModule, HealthModule, AuthModule, RateLimitModule],
   controllers: [AppController],
   providers: [
     AppService,
@@ -36,7 +38,7 @@ import { AuthModule } from './auth/auth.module';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
     consumer
-      .apply(AuthMiddleware)
+      .apply(AuthMiddleware, RateLimitMiddleware)
       .exclude(
         'health',
         'health/live',

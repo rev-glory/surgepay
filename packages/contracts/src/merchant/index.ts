@@ -13,4 +13,3 @@ export interface MerchantResponse {
 }
 
 export * from './validate-merchant.dto';
-

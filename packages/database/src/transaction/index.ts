@@ -1,7 +1,9 @@
 interface TransactionalClient {
   $transaction<T>(
-    fn: (tx: Omit<this, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use'>) => Promise<T>,
-    options?: { maxWait?: number; timeout?: number; isolationLevel?: unknown }
+    fn: (
+      tx: Omit<this, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use'>,
+    ) => Promise<T>,
+    options?: { maxWait?: number; timeout?: number; isolationLevel?: unknown },
   ): Promise<T>;
 }
 
@@ -11,7 +13,7 @@ interface TransactionalClient {
 export async function runInTransaction<T, C extends TransactionalClient>(
   client: C,
   fn: (tx: Omit<C, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use'>) => Promise<T>,
-  options?: { maxWait?: number; timeout?: number; isolationLevel?: unknown }
+  options?: { maxWait?: number; timeout?: number; isolationLevel?: unknown },
 ): Promise<T> {
   return client.$transaction(fn, options);
 }
