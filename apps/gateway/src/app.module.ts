@@ -8,12 +8,15 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthMiddleware } from './auth/auth.middleware';
 import { AuthModule } from './auth/auth.module';
+import { TestController } from './controllers/test.controller';
+import { IdempotencyInterceptor } from './idempotency/idempotency.interceptor';
+import { IdempotencyModule } from './idempotency/idempotency.module';
 import { RateLimitMiddleware } from './rate-limit/rate-limit.middleware';
 import { RateLimitModule } from './rate-limit/rate-limit.module';
 
 @Module({
-  imports: [ConfigModule, LoggerModule, HealthModule, AuthModule, RateLimitModule],
-  controllers: [AppController],
+  imports: [ConfigModule, LoggerModule, HealthModule, AuthModule, RateLimitModule, IdempotencyModule],
+  controllers: [AppController, TestController],
   providers: [
     AppService,
     {
@@ -23,6 +26,10 @@ import { RateLimitModule } from './rate-limit/rate-limit.module';
     {
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: IdempotencyInterceptor,
     },
     {
       provide: APP_PIPE,
@@ -50,4 +57,5 @@ export class AppModule implements NestModule {
       .forRoutes('*');
   }
 }
+
 
