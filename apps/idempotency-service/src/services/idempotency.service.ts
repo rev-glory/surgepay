@@ -3,6 +3,7 @@ import { ConfigType } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 
 import { LoggerService } from '@surgepay/common';
+import { PlatformErrorCode } from '@surgepay/contracts';
 
 import idempotencyConfig from '../config/idempotency.config';
 import { RequestStatus } from '../constants/request-status';
@@ -126,7 +127,10 @@ export class IdempotencyService {
         durationMs: duration,
       });
       throw new HttpException(
-        { error: 'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST' },
+        {
+          error: PlatformErrorCode.IDEMPOTENCY_CONFLICT,
+          message: 'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST',
+        },
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }
