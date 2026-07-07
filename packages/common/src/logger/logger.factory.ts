@@ -15,7 +15,7 @@ export class LoggerFactory {
 
     const pinoInstance = pino({
       level: config.level,
-      
+
       // Ensure requests and credentials redactions
       redact: {
         paths: [

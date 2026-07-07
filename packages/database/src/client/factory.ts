@@ -22,7 +22,7 @@ export interface FactoryOptions {
 export function getOrCreatePrismaClient<T extends ClientLike>(
   name: string,
   ClientConstructor: new (options?: unknown) => T,
-  options: FactoryOptions = {}
+  options: FactoryOptions = {},
 ): T {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -30,15 +30,21 @@ export function getOrCreatePrismaClient<T extends ClientLike>(
   }
 
   // Parse connection settings from environment variables with sensible defaults
-  const connectionLimit = options.connectionLimit ?? (process.env.DATABASE_CONNECTION_LIMIT 
-    ? parseInt(process.env.DATABASE_CONNECTION_LIMIT, 10) 
-    : undefined);
-  const poolTimeout = options.poolTimeout ?? (process.env.DATABASE_POOL_TIMEOUT 
-    ? parseInt(process.env.DATABASE_POOL_TIMEOUT, 10) 
-    : undefined);
-  const socketTimeout = options.socketTimeout ?? (process.env.DATABASE_IDLE_TIMEOUT 
-    ? parseInt(process.env.DATABASE_IDLE_TIMEOUT, 10) 
-    : undefined);
+  const connectionLimit =
+    options.connectionLimit ??
+    (process.env.DATABASE_CONNECTION_LIMIT
+      ? parseInt(process.env.DATABASE_CONNECTION_LIMIT, 10)
+      : undefined);
+  const poolTimeout =
+    options.poolTimeout ??
+    (process.env.DATABASE_POOL_TIMEOUT
+      ? parseInt(process.env.DATABASE_POOL_TIMEOUT, 10)
+      : undefined);
+  const socketTimeout =
+    options.socketTimeout ??
+    (process.env.DATABASE_IDLE_TIMEOUT
+      ? parseInt(process.env.DATABASE_IDLE_TIMEOUT, 10)
+      : undefined);
 
   const finalUrl = buildDatabaseUrl(databaseUrl, {
     connectionLimit,
@@ -53,9 +59,10 @@ export function getOrCreatePrismaClient<T extends ClientLike>(
         url: finalUrl,
       },
     },
-    log: options.logQueries ?? process.env.NODE_ENV === 'development'
-      ? (['query', 'info', 'warn', 'error'] as const)
-      : (['error'] as const),
+    log:
+      (options.logQueries ?? process.env.NODE_ENV === 'development')
+        ? (['query', 'info', 'warn', 'error'] as const)
+        : (['error'] as const),
   };
 
   if (process.env.NODE_ENV === 'production') {
@@ -84,7 +91,7 @@ export async function disconnectAll(): Promise<void> {
       } catch (_err) {
         // Suppress errors during shutdown to ensure other clients can disconnect
       }
-    })
+    }),
   );
   activeClients.length = 0;
 }

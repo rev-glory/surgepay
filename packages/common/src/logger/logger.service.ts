@@ -1,5 +1,5 @@
 import { Injectable, LoggerService as NestLoggerService, Scope } from '@nestjs/common';
-import { context,trace } from '@opentelemetry/api';
+import { context, trace } from '@opentelemetry/api';
 import { PinoLogger } from 'nestjs-pino';
 
 import { ILogger, LogContext } from './logger.interfaces';
@@ -43,7 +43,10 @@ export class LoggerService implements NestLoggerService, ILogger {
         : typeof args[0] === 'string'
           ? { context: args[0] }
           : {};
-    this.pinoLogger.debug(this.enrichContext(ctx), typeof message === 'string' ? message : String(message));
+    this.pinoLogger.debug(
+      this.enrichContext(ctx),
+      typeof message === 'string' ? message : String(message),
+    );
   }
 
   info(message: string, context?: LogContext): void {
@@ -59,7 +62,10 @@ export class LoggerService implements NestLoggerService, ILogger {
         : typeof args[0] === 'string'
           ? { context: args[0] }
           : {};
-    this.pinoLogger.warn(this.enrichContext(ctx), typeof message === 'string' ? message : String(message));
+    this.pinoLogger.warn(
+      this.enrichContext(ctx),
+      typeof message === 'string' ? message : String(message),
+    );
   }
 
   error(message: string, error?: Error | string | unknown, context?: LogContext): void;

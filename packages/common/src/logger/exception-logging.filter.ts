@@ -1,10 +1,4 @@
-import {
-  ArgumentsHost,
-  Catch,
-  ExceptionFilter,
-  HttpException,
-  HttpStatus,
-} from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
 
 import { BaseError } from '../errors';
@@ -71,7 +65,7 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
         method: request.method,
         path: request.url,
         status,
-      }
+      },
     );
 
     // Send formatted standard error response mapping to common contracts

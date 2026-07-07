@@ -52,9 +52,9 @@ export class HealthService {
       try {
         const result = await check();
         const indicatorResult = result[key];
-        const status = (indicatorResult?.status === 'up'
-          ? HEALTH_STATUS.UP
-          : HEALTH_STATUS.FAILED) as HealthStatus;
+        const status = (
+          indicatorResult?.status === 'up' ? HEALTH_STATUS.UP : HEALTH_STATUS.FAILED
+        ) as HealthStatus;
 
         checks[key] = status;
 

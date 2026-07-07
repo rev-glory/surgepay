@@ -14,7 +14,7 @@ export function getPinoConfig(configService: ConfigService): Params {
       level: loggingConfig.level,
       // Disable default request/response logging to avoid duplication with our LoggingInterceptor
       autoLogging: false,
-      
+
       // Prevent default request/response serialization
       serializers: {
         req: () => undefined,
@@ -66,7 +66,7 @@ export function getPinoConfig(configService: ConfigService): Params {
       // Mixin to automatically append request context and OpenTelemetry context to all logs
       mixin() {
         const store = RequestContext.currentStore() || {};
-        
+
         const activeSpan = trace.getSpan(context.active());
         const otelContext = activeSpan
           ? {
