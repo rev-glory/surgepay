@@ -1,0 +1,22 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Merchant {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  merchantId String   @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String
+  email      String   @unique
+  status     String   @default("ACTIVE")
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([merchantId])
+  @@index([email])
+}
