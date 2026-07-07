@@ -1,10 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { RequestMethod, ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as dotenv from 'dotenv';
+
 
 // Manual bootstrap phase to load the environment variables from the correct workspace level env file
 const env = process.env.NODE_ENV || 'development';
@@ -79,7 +80,13 @@ async function bootstrap(): Promise<void> {
   const defaultVersion = parts[1] ? parts[1].replace('v', '') : '1';
 
   // Apply routing prefix
-  app.setGlobalPrefix(prefix);
+  app.setGlobalPrefix(prefix, {
+    exclude: [
+      { path: 'health', method: RequestMethod.ALL },
+      { path: 'health/live', method: RequestMethod.ALL },
+      { path: 'health/ready', method: RequestMethod.ALL },
+    ],
+  });
 
   // Enable URI versioning dynamically based on config
   app.enableVersioning({

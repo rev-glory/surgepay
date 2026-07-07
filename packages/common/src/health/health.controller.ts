@@ -1,10 +1,12 @@
-import { Controller, Get, HttpStatus, Res } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Res, VERSION_NEUTRAL } from '@nestjs/common';
 import { Response } from 'express';
 
 import { HEALTH_STATUS } from './constants';
 import { HealthService } from './health.service';
 
-@Controller()
+@Controller({
+  version: VERSION_NEUTRAL,
+})
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 
