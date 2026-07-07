@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": "./",
+    "incremental": false,
+    "paths": {
+      "@surgepay/common": ["../../packages/common/dist/index"],
+      "@surgepay/common/*": ["../../packages/common/dist/*"],
+      "@surgepay/config": ["../../packages/config/dist/index"],
+      "@surgepay/config/*": ["../../packages/config/dist/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
