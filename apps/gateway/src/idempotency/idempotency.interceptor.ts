@@ -28,13 +28,26 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const req = httpCtx.getRequest<Request>();
     const res = httpCtx.getResponse<Response>();
 
-    // 1. Check for Idempotency-Key header (case-insensitive)
+    // 1. Check if the HTTP method is mutating (POST, PUT, PATCH, DELETE)
+    const isMutating = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method || '');
+
+    // 2. Retrieve and validate Idempotency-Key header (case-insensitive)
     const idempotencyKeyHeader = req.headers['idempotency-key'] || req.headers['Idempotency-Key'];
     const idempotencyKey =
-      typeof idempotencyKeyHeader === 'string' ? idempotencyKeyHeader : undefined;
+      typeof idempotencyKeyHeader === 'string' ? idempotencyKeyHeader.trim() : undefined;
 
-    // Only apply idempotency to mutating requests (POST, PUT, PATCH, DELETE) containing the header
-    if (!idempotencyKey || ['GET', 'HEAD', 'OPTIONS'].includes(req.method || '')) {
+    if (isMutating) {
+      if (!idempotencyKey) {
+        throw new HttpException(
+          {
+            error: 'BAD_REQUEST',
+            message: 'Missing or empty Idempotency-Key header',
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    } else {
+      // Non-mutating endpoints must not require the header
       return next.handle();
     }
 
@@ -106,7 +119,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
                 requestHash: checkResult.requestHash!,
                 statusCode,
                 headers: headersToCache,
-                body: responseBody,
+                body: responseBody ?? {},
               });
             } catch (completeErr) {
               this.logger.error('Failed to complete idempotency record in cache', completeErr);
