@@ -1,7 +1,7 @@
 import { Body, Controller, HttpCode, HttpStatus, Post, Req } from '@nestjs/common';
 import { Request } from 'express';
 
-import { LoggerService } from '@surgepay/common';
+import { CreatePaymentRequestDto, LoggerService } from '@surgepay/common';
 
 import { PaymentService } from './payment.service';
 
@@ -21,7 +21,7 @@ export class PaymentController {
   @Post()
   @HttpCode(HttpStatus.ACCEPTED) // Returns 202 Accepted
   async createPayment(
-    @Body() body: Record<string, unknown>,
+    @Body() body: CreatePaymentRequestDto,
     @Req() req: Request,
   ): Promise<{ status: string }> {
     this.logger.info('Received downstream payment request with headers', {

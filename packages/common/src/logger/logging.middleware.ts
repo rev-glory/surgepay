@@ -35,7 +35,7 @@ export class LoggingMiddleware implements NestMiddleware {
     const rawEventId = req.headers[EVENT_ID_HEADER] || req.headers['x-event-id'];
     const eventId = typeof rawEventId === 'string' ? rawEventId : undefined;
 
-    const rawMerchantId = req.headers[MERCHANT_ID_HEADER] || req.headers['x-merchant-id'] || (req as any).merchant?.merchantId;
+    const rawMerchantId = req.headers[MERCHANT_ID_HEADER] || req.headers['x-merchant-id'] || (req as { merchant?: { merchantId?: string } }).merchant?.merchantId;
     const merchantId = typeof rawMerchantId === 'string' ? rawMerchantId : undefined;
 
     const rawPaymentId = req.headers[PAYMENT_ID_HEADER] || req.headers['x-payment-id'];

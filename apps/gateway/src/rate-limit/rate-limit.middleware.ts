@@ -1,8 +1,9 @@
-import { HttpStatus,Injectable, NestMiddleware } from '@nestjs/common';
-import { NextFunction,Request, Response } from 'express';
+import { HttpException, HttpStatus, Injectable, NestMiddleware } from '@nestjs/common';
+import { NextFunction, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 
-import { createErrorResponse,LoggerService, RequestContextService } from '@surgepay/common';
+import { LoggerService, RequestContextService } from '@surgepay/common';
+import { PlatformErrorCode } from '@surgepay/contracts';
 
 import { RateLimitService } from './rate-limit.service';
 
@@ -57,10 +58,13 @@ export class RateLimitMiddleware implements NestMiddleware {
         },
       );
 
-      res.status(HttpStatus.TOO_MANY_REQUESTS).json(
-        createErrorResponse('RATE_LIMIT_EXCEEDED', 'Merchant rate limit exceeded.'),
+      throw new HttpException(
+        {
+          error: PlatformErrorCode.RATE_LIMIT_EXCEEDED,
+          message: 'Merchant rate limit exceeded.',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
       );
-      return;
     }
 
     return next();

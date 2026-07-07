@@ -11,6 +11,7 @@ import { from, Observable, of, throwError } from 'rxjs';
 import { catchError, mergeMap, tap } from 'rxjs/operators';
 
 import { LoggerService } from '@surgepay/common';
+import { PlatformErrorCode } from '@surgepay/contracts';
 
 import { IdempotencyClientService } from './idempotency-client.service';
 
@@ -40,7 +41,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
       if (!idempotencyKey) {
         throw new HttpException(
           {
-            error: 'BAD_REQUEST',
+            error: PlatformErrorCode.MISSING_IDEMPOTENCY_KEY,
             message: 'Missing or empty Idempotency-Key header',
           },
           HttpStatus.BAD_REQUEST,

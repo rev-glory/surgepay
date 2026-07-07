@@ -402,6 +402,15 @@ importers:
       '@surgepay/config':
         specifier: workspace:*
         version: link:../config
+      '@surgepay/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      class-transformer:
+        specifier: ^0.5.1
+        version: 0.5.1
+      class-validator:
+        specifier: ^0.14.1
+        version: 0.14.4
       ioredis:
         specifier: ^5.4.1
         version: 5.11.1

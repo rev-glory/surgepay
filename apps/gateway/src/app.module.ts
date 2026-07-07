@@ -1,7 +1,7 @@
-import { MiddlewareConsumer, Module, NestModule, ValidationPipe } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 
-import { ExceptionLoggingFilter, HealthModule, LoggerModule, LoggingInterceptor, LoggingMiddleware } from '@surgepay/common';
+import { AppValidationPipe, ExceptionLoggingFilter, HealthModule, LoggerModule, LoggingInterceptor, LoggingMiddleware } from '@surgepay/common';
 import { CommonHttpModule } from '@surgepay/common-http';
 import { ConfigModule } from '@surgepay/config';
 
@@ -37,12 +37,7 @@ import { GatewayPaymentProxyService } from './services/gateway-payment-proxy.ser
     },
     {
       provide: APP_PIPE,
-      useFactory: () =>
-        new ValidationPipe({
-          whitelist: true,
-          forbidNonWhitelisted: true,
-          transform: true,
-        }),
+      useClass: AppValidationPipe,
     },
   ],
 })
