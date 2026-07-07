@@ -17,6 +17,7 @@ import { RedisRateLimitRepository } from './redis-rate-limit.repository';
         return new Redis(redisConfig.url, {
           password: redisConfig.password || undefined,
           tls: redisConfig.tls ? {} : undefined,
+          maxRetriesPerRequest: null,
         });
       },
       inject: [ConfigService],

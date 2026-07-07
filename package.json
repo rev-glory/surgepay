@@ -14,6 +14,7 @@
     "lint": "turbo run lint",
     "format": "turbo run format",
     "test:integration": "tsx scripts/run-integration-tests.ts",
+    "test:e2e": "jest --config jest.e2e.config.js --runInBand --forceExit",
     "test": "turbo run test && pnpm test:integration",
     "clean": "turbo run clean && rimraf --glob node_modules \"apps/*/node_modules\" \"packages/*/node_modules\" \"apps/*/dist\" \"packages/*/dist\""
   },

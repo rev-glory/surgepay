@@ -41,8 +41,11 @@ jobs:
       - name: Build Workspace
         run: pnpm build
 
-      - name: Run Unit Tests
+      - name: Run Unit and Integration Tests
         run: pnpm test
+
+      - name: Run E2E Tests
+        run: pnpm test:e2e
 
       - name: Success
         run: echo "All quality gates passed successfully!"

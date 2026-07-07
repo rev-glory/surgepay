@@ -16,6 +16,7 @@ import { RedisRepository } from '../repositories/redis.repository';
         return new Redis(redisConfig.url, {
           password: redisConfig.password || undefined,
           tls: redisConfig.tls ? {} : undefined,
+          maxRetriesPerRequest: null,
         });
       },
       inject: [ConfigService],
