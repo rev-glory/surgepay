@@ -1,5 +1,26 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import * as dotenv from 'dotenv';
+
+// Manual bootstrap phase to load the environment variables from the correct workspace level env file
+const env = process.env.NODE_ENV || 'development';
+const envFile = `.env.${env}`;
+let resolvedEnvPath = path.resolve(process.cwd(), envFile);
+if (!fs.existsSync(resolvedEnvPath)) {
+  let tempDir = process.cwd();
+  for (let i = 0; i < 3; i++) {
+    tempDir = path.dirname(tempDir);
+    const parentEnvPath = path.resolve(tempDir, envFile);
+    if (fs.existsSync(parentEnvPath)) {
+      resolvedEnvPath = parentEnvPath;
+      break;
+    }
+  }
+}
+dotenv.config({ path: resolvedEnvPath });
 
 import { ExceptionLoggingFilter, LoggerFactory, LoggerService, LoggingInterceptor } from '@surgepay/common';
 import { ConfigService, type LoggingConfig } from '@surgepay/config';
@@ -79,3 +100,5 @@ bootstrap().catch((error) => {
   console.error('Fatal error during Merchant Service bootstrapping:', error);
   process.exit(1);
 });
+// Trigger watch reload
+

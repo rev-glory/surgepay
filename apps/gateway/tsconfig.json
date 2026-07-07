@@ -9,7 +9,9 @@
       "@surgepay/common": ["../../packages/common/dist/index"],
       "@surgepay/common/*": ["../../packages/common/dist/*"],
       "@surgepay/config": ["../../packages/config/dist/index"],
-      "@surgepay/config/*": ["../../packages/config/dist/*"]
+      "@surgepay/config/*": ["../../packages/config/dist/*"],
+      "@surgepay/contracts": ["../../packages/contracts/dist/index"],
+      "@surgepay/contracts/*": ["../../packages/contracts/dist/*"]
     }
   },
   "include": ["src/**/*"],

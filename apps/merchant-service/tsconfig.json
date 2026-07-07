@@ -10,6 +10,8 @@
       "@surgepay/common/*": ["../../packages/common/dist/*"],
       "@surgepay/config": ["../../packages/config/dist/index"],
       "@surgepay/config/*": ["../../packages/config/dist/*"],
+      "@surgepay/contracts": ["../../packages/contracts/dist/index"],
+      "@surgepay/contracts/*": ["../../packages/contracts/dist/*"],
       "@database": ["../../packages/database/dist/index"],
       "@database/*": ["../../packages/database/dist/*"]
     }

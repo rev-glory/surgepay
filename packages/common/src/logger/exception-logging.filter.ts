@@ -43,6 +43,21 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
       } else if (typeof responseBody === 'string') {
         message = responseBody;
       }
+
+      // Map HTTP status codes to standard platform error codes if they are generic
+      if (code === 'INTERNAL_SERVER_ERROR' || code === 'HTTP_EXCEPTION') {
+        if (status === HttpStatus.UNAUTHORIZED) {
+          code = message === 'Invalid API key' ? 'INVALID_API_KEY' : 'UNAUTHORIZED';
+        } else if (status === HttpStatus.FORBIDDEN) {
+          code = 'FORBIDDEN';
+        } else if (status === HttpStatus.SERVICE_UNAVAILABLE) {
+          code = 'SERVICE_UNAVAILABLE';
+        } else if (status === HttpStatus.BAD_REQUEST) {
+          code = 'BAD_REQUEST';
+        } else {
+          code = 'HTTP_EXCEPTION';
+        }
+      }
     } else if (exception instanceof Error) {
       message = exception.message;
     }
