@@ -47,3 +47,17 @@ export interface SecurityConfig {
   apiKeyHeader: string;
   corsEnabled: boolean;
 }
+
+export interface ServicesConfig {
+  gatewayUrl: string;
+  merchantServiceUrl: string;
+  paymentServiceUrl: string;
+  orderServiceUrl: string;
+  ledgerServiceUrl: string;
+  balanceServiceUrl: string;
+  notificationServiceUrl: string;
+  internalRequestTimeout: number;
+  internalRequestRetries: number;
+  internalRequestRetryDelay: number;
+}
+

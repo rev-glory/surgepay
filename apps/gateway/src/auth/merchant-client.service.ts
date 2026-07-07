@@ -1,31 +1,15 @@
-import * as http from 'http';
-import * as https from 'https';
-
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
-import axios, { AxiosInstance } from 'axios';
 
 import { LoggerService } from '@surgepay/common';
+import { DownstreamResponseException,ServiceClient } from '@surgepay/common-http';
 import { ValidateMerchantResponse } from '@surgepay/contracts';
-
-import { getGatewayConfig } from '../config/gateway-config.schema';
 
 @Injectable()
 export class MerchantClientService {
-  private readonly axiosInstance: AxiosInstance;
-
-  constructor(private readonly logger: LoggerService) {
-    const config = getGatewayConfig();
-
-    const httpAgent = new http.Agent({ keepAlive: true });
-    const httpsAgent = new https.Agent({ keepAlive: true });
-
-    this.axiosInstance = axios.create({
-      baseURL: config.MERCHANT_SERVICE_URL,
-      timeout: config.MERCHANT_SERVICE_TIMEOUT,
-      httpAgent,
-      httpsAgent,
-    });
-  }
+  constructor(
+    private readonly serviceClient: ServiceClient,
+    private readonly logger: LoggerService,
+  ) {}
 
   /**
    * Calls the Merchant Service to validate an API key.
@@ -37,7 +21,7 @@ export class MerchantClientService {
     try {
       this.logger.debug('Sending API key validation request to Merchant Service...');
 
-      const response = await this.axiosInstance.get<ValidateMerchantResponse>(
+      const data = await this.serviceClient.merchant.get<ValidateMerchantResponse>(
         '/api/v1/internal/merchants/validate',
         {
           headers: {
@@ -45,8 +29,6 @@ export class MerchantClientService {
           },
         },
       );
-
-      const data = response.data;
 
       // Validate response payload shape
       if (
@@ -65,9 +47,9 @@ export class MerchantClientService {
       let status: number | undefined;
       let message = String(error);
 
-      if (axios.isAxiosError(error)) {
-        status = error.response?.status;
-        const responseData = error.response?.data as Record<string, unknown> | undefined;
+      if (error instanceof DownstreamResponseException) {
+        status = error.statusCode;
+        const responseData = error.responseData as Record<string, unknown> | undefined;
         const errorDetails = responseData?.error as Record<string, unknown> | undefined;
         message = typeof errorDetails?.message === 'string' ? errorDetails.message : error.message;
       } else if (error instanceof Error) {
