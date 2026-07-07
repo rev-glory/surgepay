@@ -1,10 +1,32 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
 import { VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import * as dotenv from 'dotenv';
+
+// Manual bootstrap phase to load the environment variables from the correct workspace level env file
+const env = process.env.NODE_ENV || 'development';
+const envFile = `.env.${env}`;
+let resolvedEnvPath = path.resolve(process.cwd(), envFile);
+if (!fs.existsSync(resolvedEnvPath)) {
+  let tempDir = process.cwd();
+  for (let i = 0; i < 3; i++) {
+    tempDir = path.dirname(tempDir);
+    const parentEnvPath = path.resolve(tempDir, envFile);
+    if (fs.existsSync(parentEnvPath)) {
+      resolvedEnvPath = parentEnvPath;
+      break;
+    }
+  }
+}
+dotenv.config({ path: resolvedEnvPath });
 
 import { LoggerFactory, LoggerService } from '@surgepay/common';
 import { ConfigService, type LoggingConfig } from '@surgepay/config';
 
 import { AppModule } from './app.module';
+import { getGatewayConfig } from './config/gateway-config.schema';
 
 async function bootstrap(): Promise<void> {
   // Use environment variables directly (with safe fallbacks) for the early bootstrapping logger phase
@@ -21,6 +43,9 @@ async function bootstrap(): Promise<void> {
     logger: bootstrapLogger,
     bufferLogs: true,
   });
+
+  // Validate Gateway-specific configurations after environment is loaded
+  getGatewayConfig();
 
   const configService = app.get(ConfigService);
   const logger = await app.resolve(LoggerService);
@@ -66,3 +91,6 @@ bootstrap().catch((error) => {
   console.error('Fatal error during API Gateway bootstrapping:', error);
   process.exit(1);
 });
+// Trigger watch reload again
+
+

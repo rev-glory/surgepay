@@ -1,4 +1,4 @@
-import { Module, ValidationPipe } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule, ValidationPipe } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 
 import { ExceptionLoggingFilter, HealthModule, LoggerModule, LoggingInterceptor } from '@surgepay/common';
@@ -6,9 +6,11 @@ import { ConfigModule } from '@surgepay/config';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuthMiddleware } from './auth/auth.middleware';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
-  imports: [ConfigModule, LoggerModule, HealthModule],
+  imports: [ConfigModule, LoggerModule, HealthModule, AuthModule],
   controllers: [AppController],
   providers: [
     AppService,
@@ -31,4 +33,19 @@ import { AppService } from './app.service';
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer
+      .apply(AuthMiddleware)
+      .exclude(
+        'health',
+        'health/live',
+        'health/ready',
+        'api/v1/health',
+        'api/v1/health/live',
+        'api/v1/health/ready',
+      )
+      .forRoutes('*');
+  }
+}
+

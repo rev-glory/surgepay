@@ -11,3 +11,6 @@ export interface MerchantResponse {
   createdAt: string;
   updatedAt: string;
 }
+
+export * from './validate-merchant.dto';
+
