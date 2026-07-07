@@ -6,6 +6,11 @@ export const gatewayConfigSchema = z.object({
     (val: unknown) => (val ? parseInt(String(val), 10) : undefined),
     z.number().int().positive().default(5000),
   ),
+  IDEMPOTENCY_SERVICE_URL: z.string().url('IDEMPOTENCY_SERVICE_URL must be a valid URL'),
+  IDEMPOTENCY_SERVICE_TIMEOUT: z.preprocess(
+    (val: unknown) => (val ? parseInt(String(val), 10) : undefined),
+    z.number().int().positive().default(5000),
+  ),
   RATE_LIMIT_WINDOW_SECONDS: z.preprocess(
     (val: unknown) => (val ? parseInt(String(val), 10) : undefined),
     z.number().int().positive().default(60),
@@ -15,6 +20,7 @@ export const gatewayConfigSchema = z.object({
     z.number().int().positive().default(100),
   ),
 });
+
 
 export type GatewayConfig = z.infer<typeof gatewayConfigSchema>;
 
