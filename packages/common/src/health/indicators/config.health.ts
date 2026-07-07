@@ -11,13 +11,33 @@ export class ConfigHealthIndicator extends HealthIndicator {
 
   async isHealthy(key: string): Promise<HealthIndicatorResult> {
     try {
-      // Access core configuration objects to verify they are loaded and not throwing errors
-      const db = this.configService.database;
-      const redis = this.configService.redis;
-      const kafka = this.configService.kafka;
+      const serviceName = process.env.SERVICE_NAME || this.configService.logging?.serviceName;
+      if (!serviceName) {
+        throw new Error('SERVICE_NAME environment variable is missing');
+      }
 
-      if (!db || !redis || !kafka) {
-        throw new Error('Config properties are undefined');
+      const port = process.env.PORT;
+      if (!port) {
+        throw new Error('PORT environment variable is missing');
+      }
+
+      switch (serviceName) {
+        case 'merchant-service': {
+          const dbUrl = process.env.DATABASE_URL;
+          if (!dbUrl) {
+            throw new Error('DATABASE_URL environment variable is missing');
+          }
+          break;
+        }
+        case 'idempotency-service': {
+          const redisUrl = process.env.REDIS_URL;
+          if (!redisUrl) {
+            throw new Error('REDIS_URL environment variable is missing');
+          }
+          break;
+        }
+        default:
+          break;
       }
 
       return this.getStatus(key, true);
@@ -27,4 +47,5 @@ export class ConfigHealthIndicator extends HealthIndicator {
       throw new HealthCheckError('Configuration check failed', result);
     }
   }
+
 }

@@ -22,10 +22,8 @@ export interface ReadinessResponse {
 
 export interface OverallHealthResponse {
   status: HealthStatus;
-  database?: HealthStatus;
-  redis: HealthStatus;
-  kafka: HealthStatus;
-  configuration: HealthStatus;
-  timestamp: string;
   service: string;
+  timestamp: string;
+  checks: Record<string, HealthStatus>;
 }
+

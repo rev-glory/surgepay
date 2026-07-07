@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { HealthIndicatorResult } from '@nestjs/terminus';
 
 import { ConfigService } from '@surgepay/config';
 
@@ -33,36 +34,50 @@ export class HealthService {
   }
 
   async checkReadiness(): Promise<ReadinessResponse> {
-    const checks: Record<string, HealthStatus> = {};
+    const checks: Record<string, HealthStatus> = {
+      application: HEALTH_STATUS.UP,
+    };
     let overallStatus: HealthStatus = HEALTH_STATUS.UP;
 
-    const indicators = [];
+    const serviceName = process.env.SERVICE_NAME || this.configService.logging?.serviceName || 'unknown-service';
 
-    if (this.dbIndicator.isConfigured()) {
+    const SERVICE_DEPENDENCIES: Record<string, string[]> = {
+      'merchant-service': ['database', 'configuration'],
+      'idempotency-service': ['redis', 'configuration'],
+    };
+
+    const deps = SERVICE_DEPENDENCIES[serviceName] || ['configuration'];
+
+    const indicators: Array<{ key: string; check: () => Promise<HealthIndicatorResult> }> = [];
+
+    if (deps.includes('database') && this.dbIndicator.isConfigured()) {
       indicators.push({ key: 'database', check: () => this.dbIndicator.isHealthy('database') });
     }
-
-    indicators.push(
-      { key: 'redis', check: () => this.redisIndicator.isHealthy('redis') },
-      { key: 'kafka', check: () => this.kafkaIndicator.isHealthy('kafka') },
-      { key: 'configuration', check: () => this.configIndicator.isHealthy('configuration') },
-    );
+    if (deps.includes('redis')) {
+      indicators.push({ key: 'redis', check: () => this.redisIndicator.isHealthy('redis') });
+    }
+    if (deps.includes('kafka')) {
+      indicators.push({ key: 'kafka', check: () => this.kafkaIndicator.isHealthy('kafka') });
+    }
+    if (deps.includes('configuration')) {
+      indicators.push({ key: 'configuration', check: () => this.configIndicator.isHealthy('configuration') });
+    }
 
     for (const { key, check } of indicators) {
       try {
         const result = await check();
         const indicatorResult = result[key];
         const status = (
-          indicatorResult?.status === 'up' ? HEALTH_STATUS.UP : HEALTH_STATUS.FAILED
+          indicatorResult?.status === 'up' ? HEALTH_STATUS.UP : HEALTH_STATUS.DOWN
         ) as HealthStatus;
 
         checks[key] = status;
 
-        if (status === HEALTH_STATUS.FAILED) {
+        if (status === HEALTH_STATUS.DOWN) {
           overallStatus = HEALTH_STATUS.DOWN;
         }
       } catch (error) {
-        checks[key] = HEALTH_STATUS.FAILED;
+        checks[key] = HEALTH_STATUS.DOWN;
         overallStatus = HEALTH_STATUS.DOWN;
 
         const err = error instanceof Error ? error : new Error(String(error));
@@ -81,21 +96,14 @@ export class HealthService {
 
   async checkOverallHealth(): Promise<OverallHealthResponse> {
     const readiness = await this.checkReadiness();
-    const serviceName = this.configService.logging?.serviceName || 'unknown-service';
+    const serviceName = process.env.SERVICE_NAME || this.configService.logging?.serviceName || 'unknown-service';
 
-    const response: OverallHealthResponse = {
+    return {
       status: readiness.status,
-      redis: readiness.checks['redis'] || HEALTH_STATUS.FAILED,
-      kafka: readiness.checks['kafka'] || HEALTH_STATUS.FAILED,
-      configuration: readiness.checks['configuration'] || HEALTH_STATUS.FAILED,
-      timestamp: new Date().toISOString(),
       service: serviceName,
+      timestamp: new Date().toISOString(),
+      checks: readiness.checks,
     };
-
-    if (readiness.checks['database']) {
-      response.database = readiness.checks['database'];
-    }
-
-    return response;
   }
+
 }

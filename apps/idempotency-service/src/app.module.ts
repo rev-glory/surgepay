@@ -7,7 +7,6 @@ import { ConfigModule } from '@surgepay/config';
 
 import idempotencyConfig from './config/idempotency.config';
 import redisConfig from './config/redis.config';
-import { HealthController } from './controllers/health.controller';
 import { IdempotencyModule } from './modules/idempotency.module';
 import { RedisModule } from './modules/redis.module';
 
@@ -22,6 +21,5 @@ import { RedisModule } from './modules/redis.module';
     RedisModule,
     IdempotencyModule,
   ],
-  controllers: [HealthController],
 })
 export class AppModule {}
