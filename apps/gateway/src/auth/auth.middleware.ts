@@ -53,6 +53,13 @@ export class AuthMiddleware implements NestMiddleware {
       // 4. Attach merchant context to the Request object
       req.merchant = merchantContext;
 
+      // Update RequestContext store and headers with the authenticated merchant ID
+      req.headers['x-merchant-id'] = merchantContext.merchantId;
+      const store = this.requestContext.getStore();
+      if (store) {
+        store.merchantId = merchantContext.merchantId;
+      }
+
       // 5. Produce structured outcome logs without exposing the key
       this.logger.info(`Authentication successful for merchant: ${merchantContext.merchantId}`, {
         requestId,
