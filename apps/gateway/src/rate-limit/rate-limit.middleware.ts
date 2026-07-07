@@ -16,6 +16,15 @@ export class RateLimitMiddleware implements NestMiddleware {
   ) {}
 
   async use(req: Request, res: Response, next: NextFunction): Promise<void> {
+    const originalUrl = (req.originalUrl || '').split('?')[0] || '';
+    if (
+      originalUrl.includes('/health') ||
+      originalUrl.includes('/swagger') ||
+      originalUrl.includes('/swagger-json')
+    ) {
+      return next();
+    }
+
     const merchant = req.merchant;
     if (!merchant) {
       this.logger.warn('Rate Limit Middleware: Merchant context not found on request');

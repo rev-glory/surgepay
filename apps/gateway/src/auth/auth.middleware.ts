@@ -19,13 +19,15 @@ export class AuthMiddleware implements NestMiddleware {
     const method = req.method;
     const requestId = this.requestContext.requestId || 'N/A';
 
-    // 1. Bypass authentication for health probe endpoints (use originalUrl to avoid router rewrites)
+    // 1. Bypass authentication for health probe and swagger endpoints (use originalUrl to avoid router rewrites)
     const originalUrl = (req.originalUrl || '').split('?')[0] || '';
     if (
       originalUrl.endsWith('/health') ||
       originalUrl.endsWith('/health/live') ||
       originalUrl.endsWith('/health/ready') ||
-      originalUrl.includes('/health/')
+      originalUrl.includes('/health/') ||
+      originalUrl.includes('/swagger') ||
+      originalUrl.includes('/swagger-json')
     ) {
       return next();
     }
