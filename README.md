@@ -44,6 +44,45 @@ At a high level, the platform consists of 16 independent, service-oriented modul
 - **Redis-Backed Lock**: Manages gateway request-level idempotency.
 - **OpenTelemetry & Prometheus/Grafana**: End-to-end trace propagation and critical business metrics tracking.
 
+### 2.1 Synchronous Request Pipeline
+
+This section details the synchronous request flow. This pipeline represents the only part of the system where an external client waits synchronously for a response. It is designed to be extremely thin, fast, and secure.
+
+```
+Client Request (with X-API-Key and Idempotency-Key)
+    │
+    ▼
+API Gateway (TLS termination, routing, header verification)
+    │
+    ▼
+Merchant Authentication (delegated synchronously to Merchant Service)
+    │
+    ▼
+Rate Limiting (sliding window check backed by Redis Sorted Sets)
+    │
+    ▼
+Idempotency Service (intercepts mutating requests, locks/checks via Redis)
+    │
+    ▼
+[Next Steps: Payment Service -> Fraud Pre-Check -> DB Transaction (Payment + Outbox) -> 202 Accepted]
+    │
+    ▼
+Gateway Response
+```
+
+* **API Gateway**: The API Gateway (`apps/gateway`) acts as the single gateway interface. It handles request ingress, routing, TLS, and initial header validation. The Gateway is designed to be **intentionally thin** and carries **no business or payment logic**. It does not perform local authentication or idempotency calculations, delegating those tasks downstream.
+* **Merchant Authentication**: Authentication is enforced at the Gateway but delegated to the **Merchant Service** (`apps/merchant-service`). The Gateway extracts the `X-API-Key` from headers and validates it by executing a synchronous internal call to the Merchant Service. The Merchant Service hashes the key (SHA-256) and verifies its existence and status (e.g., active/inactive) against PostgreSQL. If authentication fails, the Gateway returns a `401 Unauthorized` or `403 Forbidden` response.
+* **Merchant-aware Rate Limiting**: To prevent abuse and protect downstream systems, the Gateway applies sliding window rate limiting. The limit is determined dynamically per merchant. The rate limiter is backed by **Redis** and leverages Redis Sorted Sets (ZSET) to track timestamp-based requests. When a merchant exceeds their configured rate (e.g., 100 requests per minute), the Gateway blocks the request with a `429 Too Many Requests` status and returns standard rate-limiting headers:
+  - `X-RateLimit-Limit`: Maximum requests permitted per window.
+  - `X-RateLimit-Remaining`: Requests remaining in the current window.
+  - `X-RateLimit-Reset`: Unix epoch time when the rate limit window resets.
+  - `Retry-After`: The number of seconds the client must wait before retrying.
+* **Request-level Idempotency**: To prevent duplicate state changes (such as duplicate payments), all mutating requests (POST, PUT, PATCH) require an `Idempotency-Key` header. The Gateway delegates check/set actions to the **Idempotency Service** (`apps/idempotency-service`), which coordinates the request lifecycle via **Redis**:
+  - **Cache Miss**: A short-lived distributed lock is acquired. The request continues to the business service (the mock returns `202 Accepted` for now). Upon completion, the HTTP response status and body are saved in Redis with a 24-hour TTL, and the lock is released.
+  - **Cache Hit (In-Progress)**: If a duplicate request arrives while the first is still processing, the service returns `409 Conflict` to prevent concurrent execution of the same transaction.
+  - **Cache Hit (Completed)**: If the request already completed, the service retrieves the cached response from Redis and immediately returns it. The downstream services are never executed twice.
+  - **Payload Validation**: If a duplicate key is reused with a different request payload, the service detects a checksum mismatch and rejects the request with `422 Unprocessable Entity` (error: `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST`).
+
 ---
 
 ## 3. Tech Stack
@@ -136,7 +175,109 @@ pnpm build
 
 ---
 
-## 6. Docker Services
+## 6. Testing Guide
+
+SurgePay provides a comprehensive testing suite that checks both unit functionality and full integration correctness across services.
+
+### Local Development Commands
+Common command sequence to boot and verify local environment:
+```bash
+# 1. Install workspace dependencies
+pnpm install
+
+# 2. Start all dockerized dependencies in the background
+cd docker && docker compose up -d && cd ..
+
+# 3. Compile and build workspace packages/apps
+pnpm build
+
+# 4. Start all services in hot-reload development mode
+pnpm dev
+
+# 5. Run full test suites (unit + integration)
+pnpm test
+
+# 6. Run end-to-end tests
+pnpm test:e2e
+```
+
+### Purpose of Test Suites
+* **Integration Tests**: Verify service-to-service contracts and correct interface implementations under external resource contexts (like database operations or caching lookups). They use **Testcontainers** to dynamically spin up clean, isolated Docker instances of PostgreSQL and Redis during the test run.
+* **End-to-End (E2E) Tests**: Verify complete synchronous request behavior end-to-end against a running local stack. This ensures that middleware sequences (API Gateway -> Authentication -> Rate Limiting -> Idempotency checks) route traffic correctly, handle concurrent lock collisions, and resume cache queries without side effects.
+* **Health Endpoints**: Allow operations or load balancers to monitor whether services are operational. The health checks monitor external downstream connections (PostgreSQL, Redis, Redpanda) and report an aggregated health status.
+* **Swagger/OpenAPI**: Provides a live web interface (e.g., `http://localhost:3000/api-docs`) to inspect API schemas, models, payload contracts, and to execute testing calls directly from a browser.
+* **Infrastructure Verification**: Confirms that database migrations, connection pools, queue systems, and telemetry endpoints are fully configured and functional before handling customer traffic.
+
+---
+
+## 7. Smoke Tests
+
+To confirm that the platform is operating correctly, execute the following HTTP calls against the API Gateway (`http://localhost:3000`):
+
+### 1. Health Probe Verification
+* **Command**:
+  ```bash
+  curl -i http://localhost:3000/health
+  ```
+* **Expected Output**:
+  - Status: `200 OK`
+  - Body: JSON payload demonstrating aggregated service health (e.g., status is `UP`, Redis is `UP`, Kafka is `UP`, PostgreSQL is `UP`).
+
+### 2. Valid Payment Request
+* **Command**:
+  ```bash
+  curl -i -X POST http://localhost:3000/api/v1/payments \
+    -H "X-API-Key: sp_api_key_valid_here" \
+    -H "Idempotency-Key: unique-idem-key-001" \
+    -H "Content-Type: application/json" \
+    -d '{"orderId":"ord_12345","amount":10000,"currency":"USD"}'
+  ```
+* **Expected Output**:
+  - Status: `202 Accepted`
+  - Body: Payment processing confirmation.
+
+### 3. Duplicate Request Prevention
+* **Command**:
+  Re-send the exact same HTTP POST request above with the same `Idempotency-Key`.
+* **Expected Output**:
+  - Status: `202 Accepted` (Or matching the original response status)
+  - Headers: Cached headers returned.
+  - Downstream: The request is not processed twice (cached response is returned immediately).
+
+### 4. Concurrent Request Collision
+* **Command**:
+  Send two identical requests simultaneously with the same `Idempotency-Key` before the first one completes.
+* **Expected Output**:
+  - Status: `409 Conflict` (for the second request) indicating that the operation is already in-progress.
+
+### 5. Payload Mismatch Detection
+* **Command**:
+  Re-send a request with the same `Idempotency-Key` but with a different body (e.g., `"amount": 20000`).
+* **Expected Output**:
+  - Status: `422 Unprocessable Entity`
+  - Body error code: `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST`.
+
+### 6. Authentication Rejection
+* **Command**:
+  Send a request with an invalid or missing API key.
+  ```bash
+  curl -i -X POST http://localhost:3000/api/v1/payments \
+    -H "X-API-Key: invalid_key" \
+    -H "Idempotency-Key: unique-idem-key-002"
+  ```
+* **Expected Output**:
+  - Status: `401 Unauthorized` (if API key is invalid/unregistered) or `403 Forbidden` (if the merchant is disabled/inactive).
+
+### 7. Rate Limiting Enforced
+* **Command**:
+  Send 101 requests within a 60-second window.
+* **Expected Output**:
+  - Status: `429 Too Many Requests`
+  - Headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `Retry-After`.
+
+---
+
+## 8. Docker Services
 
 The SurgePay platform depends on the following dockerized services to support high-reliability orchestrations and monitoring:
 
@@ -150,7 +291,7 @@ The SurgePay platform depends on the following dockerized services to support hi
 
 ---
 
-## 7. Development Commands
+## 9. Development Commands
 
 Common workspace tasks can be run directly using Turborepo and pnpm scripts at the root level:
 
@@ -182,7 +323,7 @@ cd docker && docker compose down
 
 ---
 
-## 8. Development Workflow
+## 10. Development Workflow
 
 - **Feature-Driven**: All work is mapped to Git feature branches. Direct commits to `main` are disabled.
 - **Code Reviews**: Every pull request requires review and approval from at least one engineer.
@@ -190,7 +331,7 @@ cd docker && docker compose down
 
 ---
 
-## 9. Branch Strategy
+## 11. Branch Strategy
 
 We follow a trunk-based development strategy centered directly around the `main` branch.
 
@@ -214,7 +355,7 @@ Delete feature branch
 
 ---
 
-## 10. Conventional Commit Examples
+## 12. Conventional Commit Examples
 
 We use standard Conventional Commits scopes to identify affected modules.
 
@@ -227,7 +368,7 @@ We use standard Conventional Commits scopes to identify affected modules.
 
 ---
 
-## 11. Troubleshooting
+## 13. Troubleshooting
 
 If you run into issues during workspace setup, use the following guidelines:
 
@@ -252,7 +393,74 @@ If you run into issues during workspace setup, use the following guidelines:
 
 ---
 
-## 12. First Contribution Guide
+## 14. Repository Status & Verification
+
+### Completed Capabilities
+* **API Gateway**: Front-end routing, TLS, header verification, error normalization.
+* **Merchant Service**: PostgreSQL-backed merchant schema, secure API key validation.
+* **Idempotency Service**: Redis-backed distributed locks and HTTP request payload checksum caching.
+* **Shared HTTP Client**: Normalized request/response wrappers, timeout and retry controls.
+* **Merchant Authentication**: Decoupled validator middleware delegating API key verification downstream.
+* **Redis-backed Rate Limiting**: Sliding window rate controller injecting HTTP rate headers dynamically.
+* **Request-level Idempotency**: Prevention of double-spend or duplicate payment submissions.
+* **Standard API Contracts**: Clean DTO structures and global error exception mapping.
+* **OpenAPI Documentation**: Interactive Swagger interface.
+* **Health Endpoints**: Live capability probes monitoring Redis, PostgreSQL, and Redpanda connections.
+* **Integration Tests**: Isolated component validation via Testcontainers.
+* **End-to-End (E2E) Tests**: Complete pipeline scenario flows.
+
+### Final Verification Checklist
+* [x] Gateway starts successfully on port `3000`
+* [x] Merchant Service starts successfully on port `3001` and connects to PostgreSQL
+* [x] Idempotency Service starts successfully on port `3002` and connects to Redis
+* [x] Merchant API key verification successfully hashes and authenticates requests
+* [x] Invalid and revoked API keys are properly rejected with a `401 Unauthorized` status
+* [x] Rate limiting middleware successfully tracks sliding window limits per merchant and rejects exceeding requests with `429 Too Many Requests`
+* [x] Idempotency checks correctly handle cache misses, in-progress locks (`409 Conflict`), and completed requests
+* [x] Payload validation rejects idempotency key reuse with differing payloads (`422 Unprocessable Entity`)
+* [x] Standard JSON error formats are consistently returned across all endpoints
+* [x] Swagger documentation is generated at `/api-docs`
+* [x] Health checks report readiness only when all databases/brokers are available
+* [x] All integration tests pass successfully using Testcontainers
+* [x] All End-to-End tests pass successfully against local docker infrastructure
+* [x] Local monorepo compiles clean with zero linter errors
+
+### 14.1 Preparation for Next iteration (Payment Request Path)
+With the synchronous foundation of current iteration verified and stabilized, next iteration will introduce the first business logic workflow: processing an active payment.
+
+The synchronous payment pipeline will follow this request path:
+```
+Client Request
+    │
+    ▼
+API Gateway
+    │
+    ▼
+Merchant Authentication
+    │
+    ▼
+Idempotency Check
+    │
+    ▼
+Payment Service
+    │
+    ▼
+Order Validation (Synchronous check against Order Service)
+    │
+    ▼
+Fraud Pre-check (Synchronous fraud score validation, <50ms)
+    │
+    ▼
+Payment Database Write + Transactional Outbox (Single DB transaction)
+    │
+    ▼
+202 Accepted (Response to Client)
+```
+During next iteration, the client's synchronous wait ends once the payment and its outbound event are safely persisted in a single PostgreSQL transaction. All downstream workflows (ledger indexing, balance updates, notifications) will run asynchronously in subsequent phases.
+
+---
+
+## 15. First Contribution Guide
 
 Welcome to the SurgePay development team! Follow this checklist to complete your first contribution:
 
@@ -277,7 +485,7 @@ Welcome to the SurgePay development team! Follow this checklist to complete your
 
 ---
 
-## 13. Future Roadmap
+## 16. Future Roadmap
 
 Our implementation plan proceeds incrementally in the following phases:
 1. **Infrastructure**: Setup Docker Compose for databases, Redis, and Redpanda brokers.
@@ -290,7 +498,7 @@ Our implementation plan proceeds incrementally in the following phases:
 
 ---
 
-## 14. Architecture Diagrams
+## 17. Architecture Diagrams
 
 > **Source of truth:** The Mermaid source for each diagram lives in [`diagrams/code/`](diagrams/code/). The PNGs in [`diagrams/images/`](diagrams/images/) are generated from those `.mmd` files. If the two ever diverge, the Mermaid source takes precedence.
 
