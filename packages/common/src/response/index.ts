@@ -1,37 +1,34 @@
-export interface SuccessResponse<T> {
-  success: true;
-  data: T;
-  meta?: unknown;
-}
+import type { ApiErrorResponse, SuccessResponse, ValidationErrorDetail } from '@surgepay/contracts';
 
-export interface ErrorResponse {
-  success: false;
-  error: {
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-}
-
-export function createSuccessResponse<T>(data: T, meta?: unknown): SuccessResponse<T> {
+export function createSuccessResponse<T>(data: T): SuccessResponse<T> {
   return {
     success: true,
     data,
-    meta,
   };
 }
 
 export function createErrorResponse(
   code: string,
   message: string,
-  details?: unknown,
-): ErrorResponse {
+  status: number,
+  path: string,
+  correlationId?: string,
+  requestId?: string,
+  validationErrors?: ValidationErrorDetail[],
+  metadata?: Record<string, unknown>,
+): ApiErrorResponse {
   return {
     success: false,
     error: {
       code,
       message,
-      details,
+      status,
+      timestamp: new Date().toISOString(),
+      path,
+      correlationId,
+      requestId,
+      validationErrors,
+      metadata,
     },
   };
 }

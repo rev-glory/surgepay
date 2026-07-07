@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import * as dotenv from 'dotenv';
 
@@ -22,7 +22,7 @@ if (!fs.existsSync(resolvedEnvPath)) {
 }
 dotenv.config({ path: resolvedEnvPath });
 
-import { ExceptionLoggingFilter, LoggerFactory, LoggerService, LoggingInterceptor } from '@surgepay/common';
+import { AppValidationPipe, ExceptionLoggingFilter, LoggerFactory, LoggerService, LoggingInterceptor } from '@surgepay/common';
 import { ConfigService, type LoggingConfig } from '@surgepay/config';
 
 import { AppModule } from './app.module';
@@ -52,13 +52,7 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
 
   // Register global filters, pipes, and interceptors in bootstrap (main.ts)
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    })
-  );
+  app.useGlobalPipes(new AppValidationPipe());
   app.useGlobalFilters(new ExceptionLoggingFilter(logger));
   app.useGlobalInterceptors(new LoggingInterceptor(logger));
 

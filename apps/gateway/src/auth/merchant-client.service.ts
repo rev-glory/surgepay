@@ -2,7 +2,7 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 
 import { LoggerService } from '@surgepay/common';
 import { DownstreamResponseException,ServiceClient } from '@surgepay/common-http';
-import { ValidateMerchantResponse } from '@surgepay/contracts';
+import { PlatformErrorCode, ValidateMerchantResponse } from '@surgepay/contracts';
 
 @Injectable()
 export class MerchantClientService {
@@ -62,9 +62,15 @@ export class MerchantClientService {
       );
 
       if (status === HttpStatus.UNAUTHORIZED) {
-        throw new HttpException('Invalid API key', HttpStatus.UNAUTHORIZED);
+        throw new HttpException(
+          { error: PlatformErrorCode.INVALID_API_KEY, message: 'Invalid API key' },
+          HttpStatus.UNAUTHORIZED,
+        );
       } else if (status === HttpStatus.FORBIDDEN) {
-        throw new HttpException('Merchant status is inactive', HttpStatus.FORBIDDEN);
+        throw new HttpException(
+          { error: PlatformErrorCode.MERCHANT_DISABLED, message: 'Merchant status is inactive' },
+          HttpStatus.FORBIDDEN,
+        );
       }
 
       // Any other error (timeout, network failure, 500, etc.) translates to 503

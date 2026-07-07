@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+
 import { LoggerModule } from '@surgepay/common';
 
 import { PaymentController } from './payment.controller';

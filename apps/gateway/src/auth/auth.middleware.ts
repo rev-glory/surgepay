@@ -2,6 +2,7 @@ import { HttpException, HttpStatus, Injectable, NestMiddleware } from '@nestjs/c
 import { NextFunction, Request, Response } from 'express';
 
 import { LoggerService, RequestContextService } from '@surgepay/common';
+import { PlatformErrorCode } from '@surgepay/contracts';
 
 import { MerchantAuthService } from './merchant-auth.service';
 
@@ -40,7 +41,10 @@ export class AuthMiddleware implements NestMiddleware {
         path,
         outcome: 'FAILED_MISSING_KEY',
       });
-      throw new HttpException('Missing API key', HttpStatus.UNAUTHORIZED);
+      throw new HttpException(
+        { error: PlatformErrorCode.INVALID_API_KEY, message: 'Missing API key' },
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     const startTime = Date.now();

@@ -1,6 +1,6 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 
-import { RequestContextService } from '@surgepay/common';
+import { CreatePaymentRequestDto, RequestContextService } from '@surgepay/common';
 
 import { GatewayPaymentProxyService } from '../services/gateway-payment-proxy.service';
 
@@ -20,7 +20,7 @@ export class PaymentController {
    */
   @Post()
   @HttpCode(HttpStatus.ACCEPTED) // Returns 202 Accepted
-  async createPayment(@Body() body: Record<string, unknown>): Promise<unknown> {
+  async createPayment(@Body() body: CreatePaymentRequestDto): Promise<unknown> {
     return this.paymentProxy.forwardPaymentRequest(body);
   }
 }
