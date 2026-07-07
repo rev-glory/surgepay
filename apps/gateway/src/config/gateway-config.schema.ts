@@ -11,6 +11,11 @@ export const gatewayConfigSchema = z.object({
     (val: unknown) => (val ? parseInt(String(val), 10) : undefined),
     z.number().int().positive().default(5000),
   ),
+  PAYMENT_SERVICE_URL: z.string().url('PAYMENT_SERVICE_URL must be a valid URL'),
+  PAYMENT_SERVICE_TIMEOUT: z.preprocess(
+    (val: unknown) => (val ? parseInt(String(val), 10) : undefined),
+    z.number().int().positive().default(5000),
+  ),
   RATE_LIMIT_WINDOW_SECONDS: z.preprocess(
     (val: unknown) => (val ? parseInt(String(val), 10) : undefined),
     z.number().int().positive().default(60),

@@ -15,11 +15,19 @@ import { RequestContext, RequestContextStore } from './request-context';
 @Injectable()
 export class LoggingMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction): void {
+    const activeStore = RequestContext.currentStore();
+    if (activeStore) {
+      if (activeStore.merchantId && !req.headers[MERCHANT_ID_HEADER] && !req.headers['x-merchant-id']) {
+        req.headers['x-merchant-id'] = activeStore.merchantId;
+      }
+      return next();
+    }
+
     const rawRequestId = req.headers[REQUEST_ID_HEADER] || req.headers['x-request-id'];
     const requestId = typeof rawRequestId === 'string' ? rawRequestId : `req_${uuidv4()}`;
 
     const rawCorrelationId = req.headers[CORRELATION_ID_HEADER] || req.headers['x-correlation-id'];
-    const correlationId = typeof rawCorrelationId === 'string' ? rawCorrelationId : undefined;
+    const correlationId = typeof rawCorrelationId === 'string' ? rawCorrelationId : `corr_${uuidv4()}`;
 
     const rawSagaId = req.headers[SAGA_ID_HEADER] || req.headers['x-saga-id'];
     const sagaId = typeof rawSagaId === 'string' ? rawSagaId : undefined;
@@ -27,7 +35,7 @@ export class LoggingMiddleware implements NestMiddleware {
     const rawEventId = req.headers[EVENT_ID_HEADER] || req.headers['x-event-id'];
     const eventId = typeof rawEventId === 'string' ? rawEventId : undefined;
 
-    const rawMerchantId = req.headers[MERCHANT_ID_HEADER] || req.headers['x-merchant-id'];
+    const rawMerchantId = req.headers[MERCHANT_ID_HEADER] || req.headers['x-merchant-id'] || (req as any).merchant?.merchantId;
     const merchantId = typeof rawMerchantId === 'string' ? rawMerchantId : undefined;
 
     const rawPaymentId = req.headers[PAYMENT_ID_HEADER] || req.headers['x-payment-id'];
@@ -41,6 +49,10 @@ export class LoggingMiddleware implements NestMiddleware {
       merchantId,
       paymentId,
     };
+
+    // Propagate tracing IDs back to request headers to preserve context across multiple middleware invocations
+    req.headers['x-request-id'] = requestId;
+    req.headers['x-correlation-id'] = correlationId;
 
     // Attach Request ID and correlation context to the response headers
     res.setHeader(REQUEST_ID_HEADER, requestId);
