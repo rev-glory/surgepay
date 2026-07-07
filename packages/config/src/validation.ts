@@ -7,6 +7,7 @@ import { kafkaSchema } from './schemas/kafka.schema';
 import { loggingSchema } from './schemas/logging.schema';
 import { redisSchema } from './schemas/redis.schema';
 import { securitySchema } from './schemas/security.schema';
+import { servicesSchema } from './schemas/services.schema';
 import { telemetrySchema } from './schemas/telemetry.schema';
 
 export const environmentSchema = z
@@ -19,7 +20,8 @@ export const environmentSchema = z
   .merge(httpSchema)
   .merge(loggingSchema)
   .merge(telemetrySchema)
-  .merge(securitySchema);
+  .merge(securitySchema)
+  .merge(servicesSchema);
 
 export type Environment = z.infer<typeof environmentSchema>;
 

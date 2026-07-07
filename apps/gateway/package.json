@@ -18,6 +18,7 @@
     "@nestjs/platform-express": "^10.4.15",
     "@nestjs/terminus": "^10.2.0",
     "@surgepay/common": "workspace:*",
+    "@surgepay/common-http": "workspace:*",
     "@surgepay/config": "workspace:*",
     "@surgepay/contracts": "workspace:*",
     "ioredis": "^5.4.1",

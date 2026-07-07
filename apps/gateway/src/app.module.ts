@@ -2,6 +2,7 @@ import { MiddlewareConsumer, Module, NestModule, ValidationPipe } from '@nestjs/
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 
 import { ExceptionLoggingFilter, HealthModule, LoggerModule, LoggingInterceptor } from '@surgepay/common';
+import { CommonHttpModule } from '@surgepay/common-http';
 import { ConfigModule } from '@surgepay/config';
 
 import { AppController } from './app.controller';
@@ -15,7 +16,7 @@ import { RateLimitMiddleware } from './rate-limit/rate-limit.middleware';
 import { RateLimitModule } from './rate-limit/rate-limit.module';
 
 @Module({
-  imports: [ConfigModule, LoggerModule, HealthModule, AuthModule, RateLimitModule, IdempotencyModule],
+  imports: [ConfigModule, LoggerModule, CommonHttpModule, HealthModule, AuthModule, RateLimitModule, IdempotencyModule],
   controllers: [AppController, TestController],
   providers: [
     AppService,

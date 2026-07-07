@@ -8,6 +8,7 @@ import {
   LoggingConfig,
   RedisConfig,
   SecurityConfig,
+  ServicesConfig,
   TelemetryConfig,
 } from './types';
 
@@ -41,5 +42,9 @@ export class ConfigService {
 
   get security(): SecurityConfig {
     return this.nestConfigService.getOrThrow<SecurityConfig>('security');
+  }
+
+  get services(): ServicesConfig {
+    return this.nestConfigService.getOrThrow<ServicesConfig>('services');
   }
 }

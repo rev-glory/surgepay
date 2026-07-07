@@ -46,7 +46,9 @@
       "@shared": ["packages/common/src"],
       "@shared/*": ["packages/common/src/*"],
       "@database": ["packages/database/src"],
-      "@database/*": ["packages/database/src/*"]
+      "@database/*": ["packages/database/src/*"],
+      "@surgepay/common-http": ["packages/common/http/src"],
+      "@surgepay/common-http/*": ["packages/common/http/src/*"]
     }
   },
   "exclude": ["node_modules", "dist"]
