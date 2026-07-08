@@ -259,4 +259,41 @@ describe('PaymentService', () => {
     expect(paymentRepository.create).not.toHaveBeenCalled();
     expect(outboxRepository.save).not.toHaveBeenCalled();
   });
+
+  describe('Transactional Rollback', () => {
+    it('should roll back transaction and throw original exception if paymentRepository.create fails', async () => {
+      paymentRepository.findByReference.mockResolvedValue(null);
+      mockOrderHttpClient.post.mockResolvedValue({ valid: true, orderId: 'test-order-uuid' });
+      mockFraudHttpClient.post.mockResolvedValue({ approved: true, riskScore: 12 });
+
+      const dbError = new Error('Database connection reset');
+      paymentRepository.create.mockRejectedValue(dbError);
+
+      await expect(
+        paymentService.createPayment(mockPayload, mockMerchantId),
+      ).rejects.toThrow('Database connection reset');
+
+      expect(paymentRepository.create).toHaveBeenCalled();
+      expect(outboxRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should roll back transaction and throw original exception if outboxRepository.save fails', async () => {
+      paymentRepository.findByReference.mockResolvedValue(null);
+      mockOrderHttpClient.post.mockResolvedValue({ valid: true, orderId: 'test-order-uuid' });
+      mockFraudHttpClient.post.mockResolvedValue({ approved: true, riskScore: 12 });
+
+      const mockPersisted = PaymentEntity.create({ ...mockPayload, merchantId: mockMerchantId });
+      paymentRepository.create.mockResolvedValue(mockPersisted);
+
+      const dbError = new Error('Outbox write constraint violation');
+      outboxRepository.save.mockRejectedValue(dbError);
+
+      await expect(
+        paymentService.createPayment(mockPayload, mockMerchantId),
+      ).rejects.toThrow('Outbox write constraint violation');
+
+      expect(paymentRepository.create).toHaveBeenCalled();
+      expect(outboxRepository.save).toHaveBeenCalled();
+    });
+  });
 });

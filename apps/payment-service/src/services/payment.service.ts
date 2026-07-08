@@ -262,22 +262,88 @@ export class PaymentService {
       payload: envelope,
     });
 
-    // Save both inside a single database transaction
-    const { persisted } = await this.prismaService.client.$transaction(async (tx) => {
-      const persisted = await this.paymentRepository.create(payment, tx);
-      await this.outboxRepository.save(outboxEvent, tx);
-      return { persisted };
-    });
+    const requestId = this.requestContext.requestId || 'N/A';
+
+    try {
+      this.logger.info('Transaction Started', {
+        requestId,
+        correlationId,
+        merchantId,
+        paymentId: payment.id,
+      });
+    } catch (_logErr) {
+      // Non-blocking logging
+    }
+
+    let persisted: PaymentEntity;
+    try {
+      const result = await this.prismaService.client.$transaction(async (tx) => {
+        const persistedPayment = await this.paymentRepository.create(payment, tx);
+        try {
+          this.logger.info('Payment Inserted', {
+            requestId,
+            correlationId,
+            merchantId,
+            paymentId: payment.id,
+          });
+        } catch (_logErr) {
+          // Non-blocking logging
+        }
+
+        await this.outboxRepository.save(outboxEvent, tx);
+        try {
+          this.logger.info('Outbox Inserted', {
+            requestId,
+            correlationId,
+            merchantId,
+            paymentId: payment.id,
+            outboxEventId: outboxEvent.id,
+          });
+        } catch (_logErr) {
+          // Non-blocking logging
+        }
+
+        return persistedPayment;
+      });
+      persisted = result;
+    } catch (error: unknown) {
+      try {
+        this.logger.error('Transaction Rolled Back', error instanceof Error ? error : new Error(String(error)), {
+          requestId,
+          correlationId,
+          merchantId,
+          paymentId: payment.id,
+        });
+      } catch (_logErr) {
+        // Non-blocking logging
+      }
+      throw error;
+    }
+
+    try {
+      this.logger.info('Transaction Committed', {
+        requestId,
+        correlationId,
+        merchantId,
+        paymentId: persisted.id,
+      });
+    } catch (_logErr) {
+      // Non-blocking logging
+    }
 
     // Emit structured logs on success
-    this.logger.info('Payment created successfully', {
-      merchantId,
-      paymentId: persisted.id,
-      amount: persisted.amount,
-      currency: persisted.currency,
-      reference: persisted.reference,
-      paymentStatus: persisted.status,
-    });
+    try {
+      this.logger.info('Payment created successfully', {
+        merchantId,
+        paymentId: persisted.id,
+        amount: persisted.amount,
+        currency: persisted.currency,
+        reference: persisted.reference,
+        paymentStatus: persisted.status,
+      });
+    } catch (_logErr) {
+      // Non-blocking logging
+    }
 
     return persisted;
   }
