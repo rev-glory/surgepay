@@ -62,11 +62,28 @@ export async function setupE2EEnvironment() {
   // 1. Start Postgres Container if not already running in the process
   if (!pgContainerInstance) {
     pgContainerInstance = new PostgresTestContainer();
-    process.env.DATABASE_URL = await pgContainerInstance.start();
+    const rawDbUrl = await pgContainerInstance.start();
+    const dbUrlObj = new URL(rawDbUrl);
+    dbUrlObj.searchParams.delete('schema');
+    process.env.DATABASE_URL = dbUrlObj.toString();
 
     // Sync Prisma schema
-    execSync('npx prisma db push --schema=apps/merchant-service/prisma/schema.prisma', {
-      env: { ...process.env },
+    const merchantDatabaseUrl = new URL(process.env.DATABASE_URL);
+    merchantDatabaseUrl.searchParams.set('schema', 'merchant');
+    execSync('npx prisma db push --schema=apps/merchant-service/prisma/schema.prisma --skip-generate', {
+      env: {
+        ...process.env,
+        DATABASE_URL: merchantDatabaseUrl.toString(),
+      },
+    });
+
+    const paymentDatabaseUrl = new URL(process.env.DATABASE_URL);
+    paymentDatabaseUrl.searchParams.set('schema', 'payment');
+    execSync('npx prisma db push --schema=apps/payment-service/prisma/schema.prisma --skip-generate', {
+      env: {
+        ...process.env,
+        DATABASE_URL: paymentDatabaseUrl.toString(),
+      },
     });
   }
 
@@ -84,10 +101,12 @@ export async function setupE2EEnvironment() {
   }
 
   // 3. Initialize Clients
+  const merchantDbUrlForClient = new URL(databaseUrl);
+  merchantDbUrlForClient.searchParams.set('schema', 'merchant');
   prismaClient = new PrismaClient({
     datasources: {
       db: {
-        url: databaseUrl,
+        url: merchantDbUrlForClient.toString(),
       },
     },
   });

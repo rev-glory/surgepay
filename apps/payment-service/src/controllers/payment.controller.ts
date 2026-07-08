@@ -1,8 +1,20 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Req } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  NotFoundException,
+  Param,
+  Post,
+  Req,
+} from '@nestjs/common';
 import { Request } from 'express';
 
-import { CreatePaymentRequestDto, LoggerService } from '@surgepay/common';
+import { LoggerService } from '@surgepay/common';
 
+import { CreatePaymentRequestDto } from '../dto/create-payment-request.dto';
 import { PaymentService } from '../services/payment.service';
 
 @Controller('payments')
@@ -19,18 +31,60 @@ export class PaymentController {
   async createPayment(
     @Body() body: CreatePaymentRequestDto,
     @Req() req: Request,
-  ): Promise<{ status: string }> {
-    this.logger.info('Received downstream payment request with headers', {
-      requestId: req.headers['x-request-id'] as string | undefined,
-      correlationId: req.headers['x-correlation-id'] as string | undefined,
-      merchantId: req.headers['x-merchant-id'] as string | undefined,
+  ): Promise<{ paymentId: string; status: string }> {
+    const merchantId = req.headers['x-merchant-id'] as string | undefined;
+    if (!merchantId) {
+      this.logger.error('Missing required x-merchant-id header in payment request');
+      throw new BadRequestException('Missing x-merchant-id header');
+    }
+
+    const correlationId = req.headers['x-correlation-id'] as string | undefined;
+    const requestId = req.headers['x-request-id'] as string | undefined;
+
+    this.logger.info('Received downstream payment creation request', {
+      requestId,
+      correlationId,
+      merchantId,
+      amount: body.amount,
+      currency: body.currency,
+      reference: body.reference,
     });
-    return this.paymentService.createPlaceholderPayment(body);
+
+    const payment = await this.paymentService.createPayment(body, merchantId);
+
+    return {
+      paymentId: payment.id,
+      status: payment.status,
+    };
   }
 
   @Get(':id')
-  async getPayment(@Param('id') id: string): Promise<{ id: string; status: string }> {
-    this.logger.info('Retrieving payment by ID', { id });
-    return this.paymentService.getPlaceholderPayment(id);
+  async getPayment(
+    @Param('id') id: string,
+  ): Promise<{
+    paymentId: string;
+    merchantId: string;
+    amount: number;
+    currency: string;
+    status: string;
+    reference: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }> {
+    const payment = await this.paymentService.getPayment(id);
+    if (!payment) {
+      throw new NotFoundException(`Payment with ID ${id} not found`);
+    }
+
+    return {
+      paymentId: payment.id,
+      merchantId: payment.merchantId,
+      amount: payment.amount,
+      currency: payment.currency,
+      status: payment.status,
+      reference: payment.reference,
+      createdAt: payment.createdAt,
+      updatedAt: payment.updatedAt,
+    };
   }
 }

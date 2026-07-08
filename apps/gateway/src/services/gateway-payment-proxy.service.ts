@@ -11,7 +11,17 @@ export class GatewayPaymentProxyService {
    *
    * @param body The raw payment request body.
    */
-  async forwardPaymentRequest(body: unknown): Promise<unknown> {
-    return this.serviceClient.payment.post('/api/v1/payments', body);
+  async forwardPaymentRequest(body: {
+    amount: number;
+    currency: string;
+    reference?: string;
+    orderId?: string;
+  }): Promise<unknown> {
+    const paymentServiceBody = {
+      amount: body.amount,
+      currency: body.currency,
+      reference: body.reference || body.orderId,
+    };
+    return this.serviceClient.payment.post('/api/v1/payments', paymentServiceBody);
   }
 }

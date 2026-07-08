@@ -44,7 +44,8 @@ describe('API Gateway - E2E Authentication Pipeline', () => {
 
     expect(response.status).toBe(202);
     expect(response.body).toEqual({
-      status: 'ACCEPTED',
+      paymentId: expect.any(String),
+      status: 'PENDING',
     });
   });
 

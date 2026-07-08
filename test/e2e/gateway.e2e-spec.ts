@@ -51,7 +51,8 @@ describe('API Gateway - E2E Gateway Pipeline', () => {
     expect(response.headers['x-request-id']).toBeDefined();
     expect(response.headers['x-correlation-id']).toBeDefined();
     expect(response.body).toEqual({
-      status: 'ACCEPTED',
+      paymentId: expect.any(String),
+      status: 'PENDING',
     });
 
     // Give a brief moment for any final background write to Redis
@@ -64,7 +65,10 @@ describe('API Gateway - E2E Gateway Pipeline', () => {
     expect(record!.status).toBe('COMPLETED');
     expect(record!.statusCode).toBe(202);
     expect(record!.requestHash).toBeDefined();
-    expect(record!.body).toEqual({ status: 'ACCEPTED' });
+    expect(record!.body).toEqual({
+      paymentId: expect.any(String),
+      status: 'PENDING',
+    });
 
     // 4. Verify TTL is configured (24 hours = 86400 seconds)
     expect(ttl).toBeGreaterThan(0);

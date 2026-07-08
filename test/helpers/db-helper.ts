@@ -16,6 +16,11 @@ export async function clearDatabase(): Promise<void> {
   // Cascade delete or delete in correct dependency order (ApiKey depends on Merchant)
   await prisma.merchantApiKey.deleteMany({});
   await prisma.merchant.deleteMany({});
+  try {
+    await prisma.$executeRawUnsafe('TRUNCATE TABLE "payment"."Payment" CASCADE;');
+  } catch (err) {
+    // Ignore if table/schema is not pushed yet in other contexts
+  }
 }
 
 /**

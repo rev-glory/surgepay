@@ -82,6 +82,7 @@ module.exports = tseslint.config(
       '**/.turbo/**',
       '**/*.tsbuildinfo',
       'pnpm-lock.yaml',
+      '**/generated/**',
     ],
   },
   {

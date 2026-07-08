@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 
-import { PaymentStatus } from '@prisma/client';
+import { PaymentStatus } from '../generated/client';
 
 export class PaymentEntity {
   constructor(
