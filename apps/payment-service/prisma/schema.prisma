@@ -1,0 +1,32 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Payment {
+  id         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  merchantId String        @db.Uuid
+  amount     Int
+  currency   String
+  status     PaymentStatus @default(PENDING)
+  reference  String
+  createdAt  DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime      @updatedAt @db.Timestamptz(6)
+
+  @@unique([merchantId, reference])
+  @@index([merchantId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([reference])
+}
