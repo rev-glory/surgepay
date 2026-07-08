@@ -4,6 +4,7 @@ export interface BaseEventEnvelope<TPayload> {
   correlationId: string;
   causationId: string;
   sagaId: string;
+  requestId: string;
   timestamp: string;
   version: number;
   payload: TPayload;

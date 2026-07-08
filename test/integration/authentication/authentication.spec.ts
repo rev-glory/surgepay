@@ -1,9 +1,10 @@
+import type { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import { INestApplication } from '@nestjs/common';
-import { setupIntegrationEnvironment, teardownIntegrationEnvironment } from '../helpers/test-setup';
-import { clearDatabase, createTestMerchant, createRevokedApiKey } from '../helpers/db-helper';
-import { clearRedis } from '../helpers/redis-helper';
+
 import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
+import { clearDatabase, createRevokedApiKey,createTestMerchant } from '../helpers/db-helper';
+import { clearRedis } from '../helpers/redis-helper';
+import { setupIntegrationEnvironment, teardownIntegrationEnvironment } from '../helpers/test-setup';
 
 describe('API Gateway - Authentication Integration', () => {
   let app: INestApplication;

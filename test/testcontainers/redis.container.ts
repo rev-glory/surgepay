@@ -1,4 +1,4 @@
-import { GenericContainer, StartedTestContainer } from 'testcontainers';
+import { GenericContainer, type StartedTestContainer } from 'testcontainers';
 
 export class RedisTestContainer {
   private container: StartedTestContainer | null = null;
@@ -6,9 +6,10 @@ export class RedisTestContainer {
   async start(): Promise<string> {
     this.container = await new GenericContainer('redis:alpine')
       .withExposedPorts({ container: 6379, host: 26379 })
+      .withStartupTimeout(60000)
       .start();
 
-    const port = this.container.getMappedPort(6379);
+    const port = 26379;
     const host = this.container.getHost();
     return `redis://${host}:${port}`;
   }

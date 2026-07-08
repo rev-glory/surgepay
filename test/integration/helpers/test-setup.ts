@@ -1,19 +1,21 @@
-import { INestApplication, ValidationPipe, VersioningType } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
-import Redis from 'ioredis';
-import { AddressInfo } from 'net';
-
-import { AppModule as GatewayModule } from '../../../apps/gateway/src/app.module';
-import { AppModule as IdempotencyModule } from '../../../apps/idempotency-service/src/app.module';
-import { AppModule as MerchantModule } from '../../../apps/merchant-service/src/app.module';
-
+import type { INestApplication} from '@nestjs/common';
+import { ValidationPipe, VersioningType } from '@nestjs/common';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { PrismaClient } from '@prisma/client';
+import Redis from 'ioredis';
+import type { AddressInfo } from 'net';
+
 import {
   AppValidationPipe,
   ExceptionLoggingFilter,
   LoggerService,
   LoggingInterceptor,
 } from '@surgepay/common';
+
+import { AppModule as GatewayModule } from '../../../apps/gateway/src/app.module';
+import { AppModule as IdempotencyModule } from '../../../apps/idempotency-service/src/app.module';
+import { AppModule as MerchantModule } from '../../../apps/merchant-service/src/app.module';
 
 let gatewayApp: INestApplication | null = null;
 let merchantApp: INestApplication | null = null;

@@ -1,10 +1,10 @@
+import type { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import { INestApplication } from '@nestjs/common';
 
-import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
+import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
 import { clearDatabase, createTestMerchant } from '../helpers/db-helper';
 import { clearRedis } from '../helpers/redis-helper';
-import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
+import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
 
 describe('API Gateway - E2E Concurrent Requests Pipeline', () => {
   let app: INestApplication;
@@ -58,7 +58,7 @@ describe('API Gateway - E2E Concurrent Requests Pipeline', () => {
       success: false,
       error: expect.objectContaining({
         code: 'IDEMPOTENCY_CONFLICT',
-        message: 'Http Exception',
+        message: 'An identical request with this Idempotency-Key is already in progress',
         requestId: resB.headers['x-request-id'],
         correlationId: resB.headers['x-correlation-id'],
       }),

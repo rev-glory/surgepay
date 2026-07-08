@@ -1,3 +1,6 @@
+import * as http from 'http';
+import * as https from 'https';
+
 import axios, { type AxiosInstance, type AxiosRequestConfig } from 'axios';
 
 import type { LoggerService, RequestContextService } from '@surgepay/common';
@@ -19,9 +22,25 @@ export class HttpClient {
     private readonly requestContext: RequestContextService,
     private readonly logger: LoggerService,
   ) {
+    const keepAlive = process.env.HTTP_KEEP_ALIVE !== 'false';
+    const maxSockets = process.env.HTTP_KEEP_ALIVE_MAX_SOCKETS
+      ? parseInt(process.env.HTTP_KEEP_ALIVE_MAX_SOCKETS, 10)
+      : 100;
+
+    const httpAgent = new http.Agent({
+      keepAlive,
+      maxSockets,
+    });
+    const httpsAgent = new https.Agent({
+      keepAlive,
+      maxSockets,
+    });
+
     this.axiosInstance = axios.create({
       baseURL,
       timeout,
+      httpAgent,
+      httpsAgent,
     });
     this.retryPolicy = new RetryPolicy(this.retries, this.retryDelay, this.logger);
   }

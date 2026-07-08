@@ -1,12 +1,13 @@
-import * as request from 'supertest';
-import { INestApplication } from '@nestjs/common';
-import { performance } from 'perf_hooks';
 import * as crypto from 'crypto';
 
-import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
-import { clearDatabase, createTestMerchant } from '../helpers/db-helper';
-import { clearRedis, getIdempotencyRecord } from '../helpers/redis-helper';
+import type { INestApplication } from '@nestjs/common';
+import { performance } from 'perf_hooks';
+import * as request from 'supertest';
+
 import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
+import { clearDatabase, createTestMerchant, createTestOrder } from '../helpers/db-helper';
+import { clearRedis, getIdempotencyRecord } from '../helpers/redis-helper';
+import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
 
 describe('API Gateway - E2E Gateway Pipeline', () => {
   let app: INestApplication;
@@ -30,12 +31,23 @@ describe('API Gateway - E2E Gateway Pipeline', () => {
 
   it('should successfully execute happy path (POST /payments) and cache completed status in Redis', async () => {
     const idempotencyKey = `idem_e2e_happy_${Date.now()}`;
+    const orderId = crypto.randomUUID();
+
+    // Seed matching order in Order Service database before validation call
+    await createTestOrder({
+      merchantId,
+      reference: orderId,
+      amount: 25050,
+      currency: 'USD',
+      status: 'CREATED',
+    });
+
     const payload = {
       idempotencyKey,
-      amount: 250.50,
+      amount: 25050,
       currency: 'USD',
       merchantId,
-      orderId: crypto.randomUUID(),
+      orderId,
       paymentMethod: 'card',
     };
 
@@ -51,7 +63,8 @@ describe('API Gateway - E2E Gateway Pipeline', () => {
     expect(response.headers['x-request-id']).toBeDefined();
     expect(response.headers['x-correlation-id']).toBeDefined();
     expect(response.body).toEqual({
-      status: 'ACCEPTED',
+      paymentId: expect.any(String),
+      status: 'PENDING',
     });
 
     // Give a brief moment for any final background write to Redis
@@ -64,7 +77,10 @@ describe('API Gateway - E2E Gateway Pipeline', () => {
     expect(record!.status).toBe('COMPLETED');
     expect(record!.statusCode).toBe(202);
     expect(record!.requestHash).toBeDefined();
-    expect(record!.body).toEqual({ status: 'ACCEPTED' });
+    expect(record!.body).toEqual({
+      paymentId: expect.any(String),
+      status: 'PENDING',
+    });
 
     // 4. Verify TTL is configured (24 hours = 86400 seconds)
     expect(ttl).toBeGreaterThan(0);
@@ -77,7 +93,7 @@ describe('API Gateway - E2E Gateway Pipeline', () => {
       .set('x-api-key', MERCHANT_FIXTURES.active.apiKey)
       .send({
         idempotencyKey: '',
-        amount: 250.50,
+        amount: 25050,
         currency: 'USD',
         merchantId,
         orderId: crypto.randomUUID(),
@@ -118,16 +134,25 @@ describe('API Gateway - E2E Gateway Pipeline', () => {
     // 3. Measure Total Pre-processing Pipeline Latency
     const pipelineStart = performance.now();
     const idempotencyKey = `idem_perf_pipe_${Date.now()}`;
+    const orderId = crypto.randomUUID();
+    await createTestOrder({
+      merchantId,
+      reference: orderId,
+      amount: 1000,
+      currency: 'USD',
+      status: 'CREATED',
+    });
+
     await request(app.getHttpServer())
       .post('/api/v1/payments')
       .set('x-api-key', MERCHANT_FIXTURES.active.apiKey)
       .set('idempotency-key', idempotencyKey)
       .send({
         idempotencyKey,
-        amount: 10.00,
+        amount: 1000,
         currency: 'USD',
         merchantId,
-        orderId: crypto.randomUUID(),
+        orderId,
         paymentMethod: 'card',
       });
     const totalPipelineMs = performance.now() - pipelineStart;

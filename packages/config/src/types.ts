@@ -29,6 +29,8 @@ export interface HttpConfig {
   port: number;
   host: string;
   apiPrefix: string;
+  keepAlive?: boolean;
+  maxSockets?: number;
 }
 
 export interface LoggingConfig {
@@ -56,6 +58,7 @@ export interface ServicesConfig {
   ledgerServiceUrl: string;
   balanceServiceUrl: string;
   notificationServiceUrl: string;
+  fraudServiceUrl: string;
   internalRequestTimeout: number;
   internalRequestRetries: number;
   internalRequestRetryDelay: number;

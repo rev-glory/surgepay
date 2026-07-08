@@ -1,7 +1,7 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
 
-import { CreatePaymentRequestDto, RequestContextService } from '@surgepay/common';
+import { CreatePaymentRequestDto, LoggerService, paymentRequestDuration,RequestContextService } from '@surgepay/common';
 
 import { GatewayPaymentProxyService } from '../services/gateway-payment-proxy.service';
 
@@ -12,7 +12,10 @@ export class PaymentController {
   constructor(
     private readonly paymentProxy: GatewayPaymentProxyService,
     private readonly requestContext: RequestContextService,
-  ) {}
+    private readonly logger: LoggerService,
+  ) {
+    this.logger.setContext('PaymentController');
+  }
 
   /**
    * Endpoint exposing public mutating payment requests.
@@ -165,6 +168,45 @@ export class PaymentController {
     },
   })
   async createPayment(@Body() body: CreatePaymentRequestDto): Promise<unknown> {
-    return this.paymentProxy.forwardPaymentRequest(body);
+    const startTime = Date.now();
+    const merchantId = this.requestContext.merchantId || 'N/A';
+    try {
+      const response = await this.paymentProxy.forwardPaymentRequest(body) as { paymentId?: string; status?: string };
+      const durationMs = Date.now() - startTime;
+      const paymentId = response?.paymentId;
+
+      this.logger.info('Total request duration latency log', {
+        requestId: this.requestContext.requestId || 'N/A',
+        correlationId: this.requestContext.correlationId || 'N/A',
+        merchantId,
+        paymentId,
+        stage: 'total-request-duration',
+        durationMs,
+      });
+
+      paymentRequestDuration.record(durationMs, {
+        merchantId,
+        status: 'success',
+      });
+
+      return response;
+    } catch (error) {
+      const durationMs = Date.now() - startTime;
+
+      this.logger.info('Total request duration latency log', {
+        requestId: this.requestContext.requestId || 'N/A',
+        correlationId: this.requestContext.correlationId || 'N/A',
+        merchantId,
+        stage: 'total-request-duration',
+        durationMs,
+      });
+
+      paymentRequestDuration.record(durationMs, {
+        merchantId,
+        status: 'error',
+      });
+
+      throw error;
+    }
   }
 }

@@ -82,6 +82,10 @@ module.exports = tseslint.config(
       '**/.turbo/**',
       '**/*.tsbuildinfo',
       'pnpm-lock.yaml',
+      '**/generated/**',
+      '**/jest.config.js',
+      'jest.e2e.config.js',
+      'jest.integration.config.js',
     ],
   },
   {

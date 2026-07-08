@@ -1,14 +1,12 @@
 import { execSync } from 'child_process';
-import { INestApplication, RequestMethod, ValidationPipe, VersioningType } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
-import Redis from 'ioredis';
-import { AddressInfo } from 'net';
-import { PrismaClient } from '@prisma/client';
 
-import { AppModule as GatewayModule } from '../../apps/gateway/src/app.module';
-import { AppModule as IdempotencyModule } from '../../apps/idempotency-service/src/app.module';
-import { AppModule as MerchantModule } from '../../apps/merchant-service/src/app.module';
-import { AppModule as PaymentModule } from '../../apps/payment-service/src/app.module';
+import type { INestApplication} from '@nestjs/common';
+import { RequestMethod, ValidationPipe, VersioningType } from '@nestjs/common';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
+import { PrismaClient } from '@prisma/client';
+import Redis from 'ioredis';
+import type { AddressInfo } from 'net';
 
 import {
   AppValidationPipe,
@@ -17,6 +15,12 @@ import {
   LoggingInterceptor,
 } from '@surgepay/common';
 
+import { AppModule as FraudModule } from '../../apps/fraud-service/src/app.module';
+import { AppModule as GatewayModule } from '../../apps/gateway/src/app.module';
+import { AppModule as IdempotencyModule } from '../../apps/idempotency-service/src/app.module';
+import { AppModule as MerchantModule } from '../../apps/merchant-service/src/app.module';
+import { AppModule as OrderModule } from '../../apps/order-service/src/app.module';
+import { AppModule as PaymentModule } from '../../apps/payment-service/src/app.module';
 import { PostgresTestContainer } from '../testcontainers/postgres.container';
 import { RedisTestContainer } from '../testcontainers/redis.container';
 
@@ -24,6 +28,8 @@ let gatewayApp: INestApplication | null = null;
 let merchantApp: INestApplication | null = null;
 let idempotencyApp: INestApplication | null = null;
 let paymentApp: INestApplication | null = null;
+let orderApp: INestApplication | null = null;
+let fraudApp: INestApplication | null = null;
 
 let redisClient: Redis | null = null;
 let prismaClient: PrismaClient | null = null;
@@ -62,11 +68,37 @@ export async function setupE2EEnvironment() {
   // 1. Start Postgres Container if not already running in the process
   if (!pgContainerInstance) {
     pgContainerInstance = new PostgresTestContainer();
-    process.env.DATABASE_URL = await pgContainerInstance.start();
+    const rawDbUrl = await pgContainerInstance.start();
+    const dbUrlObj = new URL(rawDbUrl);
+    dbUrlObj.searchParams.delete('schema');
+    process.env.DATABASE_URL = dbUrlObj.toString();
 
     // Sync Prisma schema
-    execSync('npx prisma db push --schema=apps/merchant-service/prisma/schema.prisma', {
-      env: { ...process.env },
+    const merchantDatabaseUrl = new URL(process.env.DATABASE_URL);
+    merchantDatabaseUrl.searchParams.set('schema', 'merchant');
+    execSync('npx prisma db push --schema=apps/merchant-service/prisma/schema.prisma --skip-generate', {
+      env: {
+        ...process.env,
+        DATABASE_URL: merchantDatabaseUrl.toString(),
+      },
+    });
+
+    const paymentDatabaseUrl = new URL(process.env.DATABASE_URL);
+    paymentDatabaseUrl.searchParams.set('schema', 'payment');
+    execSync('npx prisma db push --schema=apps/payment-service/prisma/schema.prisma --skip-generate', {
+      env: {
+        ...process.env,
+        DATABASE_URL: paymentDatabaseUrl.toString(),
+      },
+    });
+
+    const orderDatabaseUrl = new URL(process.env.DATABASE_URL);
+    orderDatabaseUrl.searchParams.set('schema', 'order');
+    execSync('npx prisma db push --schema=apps/order-service/src/prisma/order.prisma --skip-generate', {
+      env: {
+        ...process.env,
+        DATABASE_URL: orderDatabaseUrl.toString(),
+      },
     });
   }
 
@@ -84,10 +116,12 @@ export async function setupE2EEnvironment() {
   }
 
   // 3. Initialize Clients
+  const merchantDbUrlForClient = new URL(databaseUrl);
+  merchantDbUrlForClient.searchParams.set('schema', 'merchant');
   prismaClient = new PrismaClient({
     datasources: {
       db: {
-        url: databaseUrl,
+        url: merchantDbUrlForClient.toString(),
       },
     },
   });
@@ -100,6 +134,7 @@ export async function setupE2EEnvironment() {
   // Set default service names for health check mapping
   process.env.NODE_ENV = 'test';
   process.env.REDIS_PASSWORD = '';
+  process.env.INTERNAL_REQUEST_TIMEOUT = '5000';
 
   // 4. Boot Merchant Service
   process.env.SERVICE_NAME = 'merchant-service';
@@ -157,7 +192,55 @@ export async function setupE2EEnvironment() {
   const idempotencyPort = (idempotencyApp.getHttpServer().address() as AddressInfo).port;
   process.env.IDEMPOTENCY_SERVICE_URL = `http://127.0.0.1:${idempotencyPort}`;
 
-  // 6. Boot Payment Service
+  // 6. Boot Order Service
+  process.env.SERVICE_NAME = 'order-service';
+  const orderModuleFixture: TestingModule = await Test.createTestingModule({
+    imports: [OrderModule],
+  }).compile();
+  orderApp = orderModuleFixture.createNestApplication();
+  orderApp.setGlobalPrefix('api', {
+    exclude: [
+      { path: 'health', method: RequestMethod.ALL },
+      { path: 'health/live', method: RequestMethod.ALL },
+      { path: 'health/ready', method: RequestMethod.ALL },
+    ],
+  });
+  orderApp.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: '1',
+  });
+  const orderLogger = await orderApp.resolve(LoggerService);
+  orderApp.useGlobalFilters(new ExceptionLoggingFilter(orderLogger));
+  orderApp.useGlobalInterceptors(new LoggingInterceptor(orderLogger));
+  await orderApp.listen(0);
+  const orderPort = (orderApp.getHttpServer().address() as AddressInfo).port;
+  process.env.ORDER_SERVICE_URL = `http://127.0.0.1:${orderPort}`;
+
+  // 6.5. Boot Fraud Service
+  process.env.SERVICE_NAME = 'fraud-service';
+  const fraudModuleFixture: TestingModule = await Test.createTestingModule({
+    imports: [FraudModule],
+  }).compile();
+  fraudApp = fraudModuleFixture.createNestApplication();
+  fraudApp.setGlobalPrefix('api', {
+    exclude: [
+      { path: 'health', method: RequestMethod.ALL },
+      { path: 'health/live', method: RequestMethod.ALL },
+      { path: 'health/ready', method: RequestMethod.ALL },
+    ],
+  });
+  fraudApp.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: '1',
+  });
+  const fraudLogger = await fraudApp.resolve(LoggerService);
+  fraudApp.useGlobalFilters(new ExceptionLoggingFilter(fraudLogger));
+  fraudApp.useGlobalInterceptors(new LoggingInterceptor(fraudLogger));
+  await fraudApp.listen(0);
+  const fraudPort = (fraudApp.getHttpServer().address() as AddressInfo).port;
+  process.env.FRAUD_SERVICE_URL = `http://127.0.0.1:${fraudPort}`;
+
+  // 7. Boot Payment Service
   process.env.SERVICE_NAME = 'payment-service';
   const paymentModuleFixture: TestingModule = await Test.createTestingModule({
     imports: [PaymentModule],
@@ -181,7 +264,7 @@ export async function setupE2EEnvironment() {
   const paymentPort = (paymentApp.getHttpServer().address() as AddressInfo).port;
   process.env.PAYMENT_SERVICE_URL = `http://127.0.0.1:${paymentPort}`;
 
-  // 7. Boot API Gateway
+  // 8. Boot API Gateway
   process.env.SERVICE_NAME = 'gateway';
   const gatewayModuleFixture: TestingModule = await Test.createTestingModule({
     imports: [GatewayModule],
@@ -202,6 +285,8 @@ export async function setupE2EEnvironment() {
     merchantApp,
     idempotencyApp,
     paymentApp,
+    orderApp,
+    fraudApp,
   };
 }
 
@@ -221,6 +306,14 @@ export async function teardownE2EEnvironment() {
   if (paymentApp) {
     await paymentApp.close();
     paymentApp = null;
+  }
+  if (orderApp) {
+    await orderApp.close();
+    orderApp = null;
+  }
+  if (fraudApp) {
+    await fraudApp.close();
+    fraudApp = null;
   }
   if (redisClient) {
     redisClient.disconnect();

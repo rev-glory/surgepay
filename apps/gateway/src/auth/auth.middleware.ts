@@ -67,6 +67,14 @@ export class AuthMiddleware implements NestMiddleware {
       }
 
       // 5. Produce structured outcome logs without exposing the key
+      this.logger.info(`Merchant authentication latency`, {
+        requestId,
+        correlationId: this.requestContext.correlationId || 'N/A',
+        merchantId: merchantContext.merchantId,
+        stage: 'merchant-authentication',
+        durationMs: latency,
+      });
+
       this.logger.info(`Authentication successful for merchant: ${merchantContext.merchantId}`, {
         requestId,
         merchantId: merchantContext.merchantId,
@@ -81,6 +89,13 @@ export class AuthMiddleware implements NestMiddleware {
       const latency = Date.now() - startTime;
       const status = error instanceof HttpException ? error.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
       const message = error instanceof Error ? error.message : String(error);
+
+      this.logger.info(`Merchant authentication latency`, {
+        requestId,
+        correlationId: this.requestContext.correlationId || 'N/A',
+        stage: 'merchant-authentication',
+        durationMs: latency,
+      });
 
       this.logger.warn(`Authentication failed with status ${status}: ${message}`, {
         requestId,

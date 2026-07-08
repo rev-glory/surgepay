@@ -10,6 +10,7 @@ export enum InternalService {
   LEDGER = 'ledger-service',
   BALANCE = 'balance-service',
   NOTIFICATION = 'notification-service',
+  FRAUD = 'fraud-service',
 }
 
 @Injectable()
@@ -26,6 +27,7 @@ export class ServiceRegistry {
       [InternalService.LEDGER]: services.ledgerServiceUrl,
       [InternalService.BALANCE]: services.balanceServiceUrl,
       [InternalService.NOTIFICATION]: services.notificationServiceUrl,
+      [InternalService.FRAUD]: services.fraudServiceUrl,
     };
   }
 

@@ -1,11 +1,12 @@
-import * as request from 'supertest';
-import { INestApplication } from '@nestjs/common';
 import * as crypto from 'crypto';
 
-import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
-import { clearDatabase, createTestMerchant, createRevokedApiKey } from '../helpers/db-helper';
-import { clearRedis } from '../helpers/redis-helper';
+import type { INestApplication } from '@nestjs/common';
+import * as request from 'supertest';
+
 import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
+import { clearDatabase, createRevokedApiKey, createTestMerchant, createTestOrder } from '../helpers/db-helper';
+import { clearRedis } from '../helpers/redis-helper';
+import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
 
 describe('API Gateway - E2E Authentication Pipeline', () => {
   let app: INestApplication;
@@ -29,6 +30,17 @@ describe('API Gateway - E2E Authentication Pipeline', () => {
     const merchantId = merchant.merchantId;
 
     const idempotencyKey = `idem_auth_ok_${Date.now()}`;
+    const orderId = crypto.randomUUID();
+
+    // Seed matching order in Order Service database before validation call
+    await createTestOrder({
+      merchantId,
+      reference: orderId,
+      amount: 100,
+      currency: 'USD',
+      status: 'CREATED',
+    });
+
     const response = await request(app.getHttpServer())
       .post('/api/v1/payments')
       .set('x-api-key', MERCHANT_FIXTURES.active.apiKey)
@@ -38,13 +50,14 @@ describe('API Gateway - E2E Authentication Pipeline', () => {
         amount: 100,
         currency: 'USD',
         merchantId,
-        orderId: crypto.randomUUID(),
+        orderId,
         paymentMethod: 'card',
       });
 
     expect(response.status).toBe(202);
     expect(response.body).toEqual({
-      status: 'ACCEPTED',
+      paymentId: expect.any(String),
+      status: 'PENDING',
     });
   });
 

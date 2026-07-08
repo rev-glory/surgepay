@@ -10,7 +10,7 @@ import { Request, Response } from 'express';
 import { from, Observable, of, throwError } from 'rxjs';
 import { catchError, mergeMap, tap } from 'rxjs/operators';
 
-import { LoggerService } from '@surgepay/common';
+import { LoggerService, RequestContextService } from '@surgepay/common';
 import { PlatformErrorCode } from '@surgepay/contracts';
 
 import { IdempotencyClientService } from './idempotency-client.service';
@@ -20,6 +20,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
   constructor(
     private readonly idempotencyClient: IdempotencyClientService,
     private readonly logger: LoggerService,
+    private readonly requestContext: RequestContextService,
   ) {
     this.logger.setContext('IdempotencyInterceptor');
   }
@@ -60,12 +61,22 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
     const merchantId = merchant.merchantId;
 
+    const idempotencyStart = Date.now();
     try {
       // 2. Query Idempotency Service for state
       const checkResult = await this.idempotencyClient.check({
         merchantId,
         idempotencyKey,
         requestBody: req.body || {},
+      });
+      const idempotencyDurationMs = Date.now() - idempotencyStart;
+
+      this.logger.info('Idempotency lookup latency', {
+        requestId: this.requestContext.requestId || 'N/A',
+        correlationId: this.requestContext.correlationId || 'N/A',
+        merchantId,
+        stage: 'idempotency-lookup',
+        durationMs: idempotencyDurationMs,
       });
 
       // 3. Replay cached response if COMPLETED
@@ -150,6 +161,15 @@ export class IdempotencyInterceptor implements NestInterceptor {
         }),
       );
     } catch (error) {
+      const idempotencyDurationMs = Date.now() - idempotencyStart;
+      this.logger.info('Idempotency lookup latency', {
+        requestId: this.requestContext.requestId || 'N/A',
+        correlationId: this.requestContext.correlationId || 'N/A',
+        merchantId,
+        stage: 'idempotency-lookup',
+        durationMs: idempotencyDurationMs,
+      });
+
       // Propagate HttpException (409, 422, etc.) or rethrow
       if (error instanceof HttpException) {
         throw error;

@@ -10,6 +10,7 @@ export default registerAs('services', (): ServicesConfig => ({
   ledgerServiceUrl: process.env.LEDGER_SERVICE_URL || 'http://localhost:3005',
   balanceServiceUrl: process.env.BALANCE_SERVICE_URL || 'http://localhost:3006',
   notificationServiceUrl: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3007',
+  fraudServiceUrl: process.env.FRAUD_SERVICE_URL || 'http://localhost:3008',
   internalRequestTimeout: process.env.INTERNAL_REQUEST_TIMEOUT
     ? parseInt(process.env.INTERNAL_REQUEST_TIMEOUT, 10)
     : 2000,
