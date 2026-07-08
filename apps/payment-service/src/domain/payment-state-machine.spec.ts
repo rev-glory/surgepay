@@ -1,5 +1,6 @@
+import { InvalidPaymentStateTransitionException } from '@surgepay/common';
+
 import { PaymentStatus } from '../generated/client';
-import { InvalidPaymentStateTransitionException } from './exceptions/invalid-payment-state-transition.exception';
 import { PaymentStateMachine } from './payment-state-machine';
 
 describe('PaymentStateMachine', () => {

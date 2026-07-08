@@ -18,19 +18,19 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let code = PlatformErrorCode.INTERNAL_ERROR;
+    let code: string = PlatformErrorCode.INTERNAL_ERROR;
     let message = 'Internal server error';
     let validationErrors: ValidationErrorDetail[] | undefined = undefined;
     let metadata: Record<string, unknown> | undefined = undefined;
 
     if (exception instanceof BaseError) {
       status = exception.statusCode;
-      code = exception.code as PlatformErrorCode;
+      code = exception.code;
       message = exception.message;
       if (code === PlatformErrorCode.VALIDATION_FAILED && Array.isArray(exception.details)) {
         validationErrors = exception.details as ValidationErrorDetail[];
-      } else if (exception.details) {
-        metadata = typeof exception.details === 'object' ? (exception.details as Record<string, unknown>) : { details: exception.details };
+      } else if (exception.details && typeof exception.details === 'object') {
+        metadata = exception.details as Record<string, unknown>;
       }
     } else if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -44,18 +44,16 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
       if (typeof responseBody === 'object' && responseBody !== null) {
         const bodyObj = responseBody as Record<string, unknown>;
         
-        // Extract error code from HttpException payload, checking nested structure
         let rawError = bodyObj.error || bodyObj.code;
         if (rawError && typeof rawError === 'object') {
           rawError = (rawError as Record<string, unknown>).code;
         }
 
-        if (typeof rawError === 'string' && Object.values(PlatformErrorCode).includes(rawError as PlatformErrorCode)) {
-          code = rawError as PlatformErrorCode;
+        if (typeof rawError === 'string') {
+          code = rawError;
         } else if (typeof bodyObj.message === 'string' && Object.values(PlatformErrorCode).includes(bodyObj.message as PlatformErrorCode)) {
-          code = bodyObj.message as PlatformErrorCode;
+          code = bodyObj.message;
         } else {
-          // Map default HTTP status codes to standard codes if they are generic
           if (status === HttpStatus.UNAUTHORIZED) {
             code = PlatformErrorCode.INVALID_API_KEY;
           } else if (status === HttpStatus.FORBIDDEN) {
@@ -97,21 +95,40 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
       message = exception.message;
     }
 
-    // Log the unhandled exception using the structured logger
-    const errorLogMsg = `Unhandled exception on ${request.method} ${request.url}: ${message}`;
-    this.logger.error(
-      errorLogMsg,
-      exception instanceof Error ? exception : new Error(String(exception)),
-      {
+    // Retrieve correlation and request identifiers from request context or headers
+    const correlationId = RequestContext.correlationId || (request.headers['x-correlation-id'] as string | undefined);
+    const requestId = RequestContext.requestId || (request.headers['x-request-id'] as string | undefined);
+    const merchantId = RequestContext.merchantId || (request.headers['x-merchant-id'] as string | undefined) || (metadata?.merchantId as string | undefined);
+    const paymentId = RequestContext.paymentId || (request.headers['x-payment-id'] as string | undefined) || (metadata?.paymentId as string | undefined);
+
+    // Log the unhandled exception using structured logger if not already logged
+    if (exception && typeof exception === 'object' && !(exception as Record<string, unknown>).isLogged) {
+      const exceptionType = exception.constructor.name;
+      const logPayload = {
+        requestId,
+        correlationId,
+        merchantId,
+        paymentId,
+        exceptionType,
+        errorCode: code,
         method: request.method,
         path: request.url,
         status,
-      },
-    );
+        ...(metadata ? { metadata } : {}),
+      };
 
-    // Retrieve correlation and request identifiers
-    const correlationId = RequestContext.correlationId || (request.headers['x-correlation-id'] as string | undefined);
-    const requestId = RequestContext.requestId || (request.headers['x-request-id'] as string | undefined);
+      if (exception instanceof BaseError || (exception instanceof HttpException && status < 500)) {
+        // Business failures logged as warning
+        this.logger.warn(`Business Exception [${exceptionType}]: ${message}`, logPayload);
+      } else {
+        // Unexpected system failures logged as error
+        const err = exception instanceof Error ? exception : new Error(String(exception));
+        this.logger.error(`System Exception [${exceptionType}]: ${message}`, err, logPayload);
+      }
+
+      // Mark as logged to prevent duplicate logging
+      (exception as Record<string, unknown>).isLogged = true;
+    }
 
     // Send formatted standard error response mapping to common contracts
     response.status(status).json(

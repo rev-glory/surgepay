@@ -1,12 +1,11 @@
-import {
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 
-import { LoggerService } from '@surgepay/common';
+import {
+  LoggerService,
+  OrderAlreadyPaidException,
+  OrderAmountMismatchException,
+  OrderNotFoundException,
+} from '@surgepay/common';
 
 import { OrderEntity } from '../entities/order.entity';
 import { OrderStatus } from '../generated/client';
@@ -24,7 +23,7 @@ export class OrderService {
   /**
    * Enforces business validation rules in order:
    * 1. Order exists (404)
-   * 2. Merchant owns the order (403)
+   * 2. Merchant owns the order (403 mapped to NotFound for isolation)
    * 3. Amount matches exactly (422)
    * 4. Currency matches exactly (422)
    * 5. Status equals CREATED (409)
@@ -54,11 +53,11 @@ export class OrderService {
           orderMerchantId: globalOrder.merchantId,
           reference,
         });
-        throw new ForbiddenException('Merchant does not own this order.');
+        throw new OrderNotFoundException(reference);
       }
 
       this.logger.warn('Order validation failed: Order not found', { merchantId, reference });
-      throw new NotFoundException(`Order with reference '${reference}' not found.`);
+      throw new OrderNotFoundException(reference);
     }
 
     // 2. Merchant owns the order (explicit safety check)
@@ -68,7 +67,7 @@ export class OrderService {
         orderMerchantId: order.merchantId,
         reference,
       });
-      throw new ForbiddenException('Merchant does not own this order.');
+      throw new OrderNotFoundException(reference);
     }
 
     // 3. Amount matches exactly
@@ -78,9 +77,7 @@ export class OrderService {
         expectedAmount: order.amount,
         requestedAmount: amount,
       });
-      throw new UnprocessableEntityException(
-        `Amount mismatch: Order amount is ${order.amount}, requested amount is ${amount}.`,
-      );
+      throw new OrderAmountMismatchException(reference, order.amount, amount);
     }
 
     // 4. Currency matches exactly
@@ -90,9 +87,7 @@ export class OrderService {
         expectedCurrency: order.currency,
         requestedCurrency: currency,
       });
-      throw new UnprocessableEntityException(
-        `Currency mismatch: Order currency is ${order.currency}, requested currency is ${currency}.`,
-      );
+      throw new OrderAmountMismatchException(reference, order.amount, amount);
     }
 
     // 5. Status equals CREATED
@@ -101,14 +96,7 @@ export class OrderService {
         reference,
         orderStatus: order.status,
       });
-      if (order.status === OrderStatus.PAID) {
-        throw new ConflictException('Order is already paid.');
-      } else if (order.status === OrderStatus.CANCELLED) {
-        throw new ConflictException('Order is cancelled.');
-      } else if (order.status === OrderStatus.REFUNDED) {
-        throw new ConflictException('Order is refunded.');
-      }
-      throw new ConflictException(`Order cannot be paid in status ${order.status}.`);
+      throw new OrderAlreadyPaidException(reference);
     }
 
     this.logger.info('Order validated successfully', {

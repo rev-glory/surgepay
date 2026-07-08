@@ -1,5 +1,6 @@
+import { InvalidPaymentStateTransitionException } from '@surgepay/common';
+
 import { PaymentStatus } from '../generated/client';
-import { InvalidPaymentStateTransitionException } from './exceptions/invalid-payment-state-transition.exception';
 
 export class PaymentStateMachine {
   private static readonly ALLOWED_TRANSITIONS: Record<PaymentStatus, Set<PaymentStatus>> = {

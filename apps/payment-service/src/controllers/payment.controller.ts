@@ -5,14 +5,13 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   Param,
   Post,
   Req,
 } from '@nestjs/common';
 import { Request } from 'express';
 
-import { LoggerService } from '@surgepay/common';
+import { LoggerService, PaymentNotFoundException } from '@surgepay/common';
 
 import { CreatePaymentRequestDto } from '../dto/create-payment-request.dto';
 import { PaymentService } from '../services/payment.service';
@@ -73,7 +72,7 @@ export class PaymentController {
   }> {
     const payment = await this.paymentService.getPayment(id);
     if (!payment) {
-      throw new NotFoundException(`Payment with ID ${id} not found`);
+      throw new PaymentNotFoundException(id);
     }
 
     return {

@@ -1,9 +1,10 @@
+import type { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import { INestApplication } from '@nestjs/common';
-import { setupIntegrationEnvironment, teardownIntegrationEnvironment } from '../helpers/test-setup';
+
+import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
 import { clearDatabase, createTestMerchant } from '../helpers/db-helper';
 import { clearRedis, getIdempotencyRecord } from '../helpers/redis-helper';
-import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
+import { setupIntegrationEnvironment, teardownIntegrationEnvironment } from '../helpers/test-setup';
 
 describe('API Gateway - Idempotency Integration', () => {
   let app: INestApplication;

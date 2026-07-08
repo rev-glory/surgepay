@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 
-import { LoggerService, RequestContextService } from '@surgepay/common';
+import { FraudRejectedException,LoggerService, RequestContextService } from '@surgepay/common';
 
 import { PrecheckRequestDto } from './dto/precheck-request.dto';
 import { PrecheckResponseDto } from './dto/precheck-response.dto';
@@ -58,11 +58,13 @@ export class FraudService {
           evaluationDurationMs: durationMs,
         });
 
-        return {
-          approved: false,
-          riskScore: finalRiskScore,
+        throw new FraudRejectedException(
+          body.merchantId,
+          body.amount,
+          body.currency,
+          finalRiskScore,
           reason,
-        };
+        );
       }
 
       // Accumulate risk scores for passing placeholder rules (Velocity etc.)

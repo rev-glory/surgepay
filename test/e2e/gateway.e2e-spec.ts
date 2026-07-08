@@ -1,12 +1,13 @@
-import * as request from 'supertest';
-import { INestApplication } from '@nestjs/common';
-import { performance } from 'perf_hooks';
 import * as crypto from 'crypto';
 
-import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
+import type { INestApplication } from '@nestjs/common';
+import { performance } from 'perf_hooks';
+import * as request from 'supertest';
+
+import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
 import { clearDatabase, createTestMerchant, createTestOrder } from '../helpers/db-helper';
 import { clearRedis, getIdempotencyRecord } from '../helpers/redis-helper';
-import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
+import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
 
 describe('API Gateway - E2E Gateway Pipeline', () => {
   let app: INestApplication;

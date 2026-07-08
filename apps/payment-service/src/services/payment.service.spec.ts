@@ -1,11 +1,15 @@
 import {
-  ConflictException,
-  NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 
-import { LoggerService, PaymentBlockedError, RequestContextService } from '@surgepay/common';
+import {
+  DuplicatePaymentReferenceException,
+  FraudRejectedException,
+  LoggerService,
+  OrderNotFoundException,
+  RequestContextService,
+} from '@surgepay/common';
 import {
   DownstreamResponseException,
   RequestTimeoutException,
@@ -162,7 +166,7 @@ describe('PaymentService', () => {
 
     await expect(
       paymentService.createPayment(mockPayload, mockMerchantId),
-    ).rejects.toThrow(ConflictException);
+    ).rejects.toThrow(DuplicatePaymentReferenceException);
 
     expect(mockOrderHttpClient.post).not.toHaveBeenCalled();
     expect(mockFraudHttpClient.post).not.toHaveBeenCalled();
@@ -181,7 +185,7 @@ describe('PaymentService', () => {
 
     await expect(
       paymentService.createPayment(mockPayload, mockMerchantId),
-    ).rejects.toThrow(NotFoundException);
+    ).rejects.toThrow(OrderNotFoundException);
 
     expect(mockFraudHttpClient.post).not.toHaveBeenCalled();
     expect(paymentRepository.create).not.toHaveBeenCalled();
@@ -195,7 +199,7 @@ describe('PaymentService', () => {
 
     await expect(
       paymentService.createPayment(mockPayload, mockMerchantId),
-    ).rejects.toThrow(PaymentBlockedError);
+    ).rejects.toThrow(FraudRejectedException);
 
     expect(paymentRepository.create).not.toHaveBeenCalled();
     expect(outboxRepository.save).not.toHaveBeenCalled();
@@ -214,7 +218,7 @@ describe('PaymentService', () => {
 
     await expect(
       paymentService.createPayment(mockPayload, mockMerchantId),
-    ).rejects.toThrow(PaymentBlockedError);
+    ).rejects.toThrow(FraudRejectedException);
 
     expect(paymentRepository.create).not.toHaveBeenCalled();
     expect(outboxRepository.save).not.toHaveBeenCalled();

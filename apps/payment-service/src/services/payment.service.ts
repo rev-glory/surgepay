@@ -1,13 +1,18 @@
 import {
-  ConflictException,
   Injectable,
   InternalServerErrorException,
-  NotFoundException,
   ServiceUnavailableException,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 
-import { LoggerService, PaymentBlockedError, RequestContextService } from '@surgepay/common';
+import {
+  DuplicatePaymentReferenceException,
+  FraudRejectedException,
+  LoggerService,
+  OrderAlreadyPaidException,
+  OrderAmountMismatchException,
+  OrderNotFoundException,
+  RequestContextService,
+} from '@surgepay/common';
 import {
   DownstreamResponseException,
   RequestTimeoutException,
@@ -53,7 +58,7 @@ export class PaymentService {
         requestId,
         correlationId,
       });
-      throw new ConflictException(`Payment with reference '${normalizedReference}' already exists for this merchant.`);
+      throw new DuplicatePaymentReferenceException(merchantId, normalizedReference);
     }
 
     // 3. Synchronous Order Validation Call
@@ -100,13 +105,16 @@ export class PaymentService {
 
         if (status === 404 || status === 403) {
           // Map 403 (merchant mismatch) to 404 (not found) to avoid leaking order existence
-          mappedError = new NotFoundException(`Order with reference '${normalizedReference}' not found.`);
+          mappedError = new OrderNotFoundException(normalizedReference, { cause: error });
         } else if (status === 422) {
-          mappedError = new UnprocessableEntityException(
-            error.message || 'Order amount or currency mismatch.',
+          mappedError = new OrderAmountMismatchException(
+            normalizedReference,
+            body.amount,
+            body.amount,
+            { cause: error },
           );
         } else if (status === 409) {
-          mappedError = new ConflictException(error.message || 'Order already processed or cancelled.');
+          mappedError = new OrderAlreadyPaidException(normalizedReference, { cause: error });
         } else {
           mappedError = new InternalServerErrorException('Unexpected order validation failure.');
         }
@@ -183,13 +191,19 @@ export class PaymentService {
           ruleTriggered: response.reason,
           durationMs: evalDuration,
         });
-        throw new PaymentBlockedError('Payment rejected by fraud rules');
+        throw new FraudRejectedException(
+          merchantId,
+          body.amount,
+          body.currency,
+          riskScore,
+          response.reason,
+        );
       }
     } catch (error: unknown) {
       const evalDuration = Date.now() - fraudStartTime;
       let mappedError: Error;
 
-      if (error instanceof PaymentBlockedError) {
+      if (error instanceof FraudRejectedException) {
         throw error;
       }
 
@@ -204,7 +218,14 @@ export class PaymentService {
         fraudDecision = `DOWNSTREAM_ERROR_${status}`;
 
         if (status === 403) {
-          mappedError = new PaymentBlockedError('Payment rejected by fraud rules');
+          mappedError = new FraudRejectedException(
+            merchantId,
+            body.amount,
+            body.currency,
+            0,
+            'Downstream fraud check failure',
+            { cause: error },
+          );
         } else {
           mappedError = new ServiceUnavailableException('Fraud pre-check service is unavailable.');
         }

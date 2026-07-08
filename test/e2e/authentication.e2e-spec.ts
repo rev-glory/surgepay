@@ -1,11 +1,12 @@
-import * as request from 'supertest';
-import { INestApplication } from '@nestjs/common';
 import * as crypto from 'crypto';
 
-import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
-import { clearDatabase, createTestMerchant, createRevokedApiKey, createTestOrder } from '../helpers/db-helper';
-import { clearRedis } from '../helpers/redis-helper';
+import type { INestApplication } from '@nestjs/common';
+import * as request from 'supertest';
+
 import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
+import { clearDatabase, createRevokedApiKey, createTestMerchant, createTestOrder } from '../helpers/db-helper';
+import { clearRedis } from '../helpers/redis-helper';
+import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
 
 describe('API Gateway - E2E Authentication Pipeline', () => {
   let app: INestApplication;

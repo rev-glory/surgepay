@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
-import { INestApplication } from '@nestjs/common';
+
+import type { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 
 import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';

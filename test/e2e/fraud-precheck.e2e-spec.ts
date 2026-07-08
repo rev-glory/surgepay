@@ -1,14 +1,15 @@
 const blacklistedMerchantId = '99999999-9999-4999-a999-999999999999';
 process.env.FRAUD_BLACKLISTED_MERCHANTS = blacklistedMerchantId;
 
-import * as request from 'supertest';
-import { INestApplication } from '@nestjs/common';
 import * as crypto from 'crypto';
 
-import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
-import { clearDatabase, createTestMerchant, createTestOrder, getPaymentCount, getOutboxCount, getOutboxEvents, getPaymentRecords } from '../helpers/db-helper';
-import { clearRedis } from '../helpers/redis-helper';
+import type { INestApplication } from '@nestjs/common';
+import * as request from 'supertest';
+
 import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
+import { clearDatabase, createTestMerchant, createTestOrder, getOutboxCount, getOutboxEvents, getPaymentCount, getPaymentRecords } from '../helpers/db-helper';
+import { clearRedis } from '../helpers/redis-helper';
+import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
 
 describe('Fraud Pre-check & Risk Screening - E2E Integration Pipeline', () => {
   let app: INestApplication;

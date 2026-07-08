@@ -1,4 +1,5 @@
-import { InvalidPaymentStateTransitionException } from '../domain/exceptions/invalid-payment-state-transition.exception';
+import { InvalidPaymentStateTransitionException } from '@surgepay/common';
+
 import { PaymentStatus } from '../generated/client';
 import { PaymentEntity } from './payment.entity';
 

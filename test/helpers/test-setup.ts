@@ -1,16 +1,12 @@
 import { execSync } from 'child_process';
-import { INestApplication, RequestMethod, ValidationPipe, VersioningType } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
-import Redis from 'ioredis';
-import { AddressInfo } from 'net';
-import { PrismaClient } from '@prisma/client';
 
-import { AppModule as GatewayModule } from '../../apps/gateway/src/app.module';
-import { AppModule as IdempotencyModule } from '../../apps/idempotency-service/src/app.module';
-import { AppModule as MerchantModule } from '../../apps/merchant-service/src/app.module';
-import { AppModule as PaymentModule } from '../../apps/payment-service/src/app.module';
-import { AppModule as OrderModule } from '../../apps/order-service/src/app.module';
-import { AppModule as FraudModule } from '../../apps/fraud-service/src/app.module';
+import type { INestApplication} from '@nestjs/common';
+import { RequestMethod, ValidationPipe, VersioningType } from '@nestjs/common';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
+import { PrismaClient } from '@prisma/client';
+import Redis from 'ioredis';
+import type { AddressInfo } from 'net';
 
 import {
   AppValidationPipe,
@@ -19,6 +15,12 @@ import {
   LoggingInterceptor,
 } from '@surgepay/common';
 
+import { AppModule as FraudModule } from '../../apps/fraud-service/src/app.module';
+import { AppModule as GatewayModule } from '../../apps/gateway/src/app.module';
+import { AppModule as IdempotencyModule } from '../../apps/idempotency-service/src/app.module';
+import { AppModule as MerchantModule } from '../../apps/merchant-service/src/app.module';
+import { AppModule as OrderModule } from '../../apps/order-service/src/app.module';
+import { AppModule as PaymentModule } from '../../apps/payment-service/src/app.module';
 import { PostgresTestContainer } from '../testcontainers/postgres.container';
 import { RedisTestContainer } from '../testcontainers/redis.container';
 
