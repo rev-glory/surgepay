@@ -425,38 +425,21 @@ If you run into issues during workspace setup, use the following guidelines:
 * [x] All End-to-End tests pass successfully against local docker infrastructure
 * [x] Local monorepo compiles clean with zero linter errors
 
-### 14.1 Preparation for Next iteration (Payment Request Path)
-With the synchronous foundation of current iteration verified and stabilized, next iteration will introduce the first business logic workflow: processing an active payment.
+### 14.1 Synchronous Payment Request Path (Completed)
+The synchronous payment pipeline is now fully implemented, validated, and verified. 
 
-The synchronous payment pipeline will follow this request path:
-```
-Client Request
-    │
-    ▼
-API Gateway
-    │
-    ▼
-Merchant Authentication
-    │
-    ▼
-Idempotency Check
-    │
-    ▼
-Payment Service
-    │
-    ▼
-Order Validation (Synchronous check against Order Service)
-    │
-    ▼
-Fraud Pre-check (Synchronous fraud score validation, <50ms)
-    │
-    ▼
-Payment Database Write + Transactional Outbox (Single DB transaction)
-    │
-    ▼
-202 Accepted (Response to Client)
-```
-During next iteration, the client's synchronous wait ends once the payment and its outbound event are safely persisted in a single PostgreSQL transaction. All downstream workflows (ledger indexing, balance updates, notifications) will run asynchronously in subsequent phases.
+For the complete architectural design, execution sequence, validation rationale, transaction boundaries, outbox persistence detail, and benchmark baselines, refer to the standalone document:
+👉 **[Day 3 Synchronous Payment Processing Architecture](docs/day3-synchronous-pipeline.md)**
+
+### 14.2 Day 3 Completion Summary & Transition to Day 4
+Day 3 completes the **Payment Request Path** milestone. The synchronous portion of the platform is fully operational: a client request containing valid API credentials and a unique idempotency key is checked for rate-limiting compliance, cached responses, downstream order availability, and fraud risk before being atomically saved as a `Payment` record and a `PaymentInitiated` event envelope within a single transactional boundary, returning `202 Accepted` to the client.
+
+Beginning with Day 4, the platform transitions from synchronous HTTP coordination to asynchronous, event-driven orchestration:
+- **Outbox Relay**: Reliable background polling of the `OutboxEvent` table to publish events to Redpanda with At-Least-Once delivery.
+- **Redpanda/Kafka Event Publishing**: Event envelope encoding and transmission to Kafka topics.
+- **Inbox Pattern Foundation**: Idempotence-checking and deduplication mechanisms at the event consumer layer.
+- **Saga Orchestrator**: Event-driven coordination of downstream stages (Ledger, Balance, Notification) reactively, including reverse compensation chains on failures.
+- **Retry Scheduler**: Exponential backoff and DLQ routing for transient and permanent processing errors.
 
 ---
 

@@ -201,7 +201,7 @@ generated/
 # =====================================================
 # Project Documentation (Local Only)
 # =====================================================
-
+docs/
 AGENTS.md
 commits.txt
 doc-v3.txt
@@ -212,4 +212,4 @@ verification_report.md
 # =====================================================
 **/src/**/*.js
 **/src/**/*.js.map
-**/src/**/*.d.ts
+**/src/**/*.d.ts

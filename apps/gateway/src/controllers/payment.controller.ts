@@ -1,7 +1,7 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
 
-import { CreatePaymentRequestDto, RequestContextService, LoggerService, paymentRequestDuration } from '@surgepay/common';
+import { CreatePaymentRequestDto, LoggerService, paymentRequestDuration,RequestContextService } from '@surgepay/common';
 
 import { GatewayPaymentProxyService } from '../services/gateway-payment-proxy.service';
 
