@@ -1,9 +1,13 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 
 import {
+  DomainErrorCode,
+  DomainException,
   LoggerService,
+  MerchantOwnershipException,
   OrderAlreadyPaidException,
   OrderAmountMismatchException,
+  OrderCurrencyMismatchException,
   OrderNotFoundException,
 } from '@surgepay/common';
 
@@ -53,7 +57,7 @@ export class OrderService {
           orderMerchantId: globalOrder.merchantId,
           reference,
         });
-        throw new OrderNotFoundException(reference);
+        throw new MerchantOwnershipException(reference, merchantId);
       }
 
       this.logger.warn('Order validation failed: Order not found', { merchantId, reference });
@@ -67,7 +71,7 @@ export class OrderService {
         orderMerchantId: order.merchantId,
         reference,
       });
-      throw new OrderNotFoundException(reference);
+      throw new MerchantOwnershipException(reference, merchantId);
     }
 
     // 3. Amount matches exactly
@@ -87,7 +91,7 @@ export class OrderService {
         expectedCurrency: order.currency,
         requestedCurrency: currency,
       });
-      throw new OrderAmountMismatchException(reference, order.amount, amount);
+      throw new OrderCurrencyMismatchException(reference, order.currency, currency);
     }
 
     // 5. Status equals CREATED
@@ -96,6 +100,22 @@ export class OrderService {
         reference,
         orderStatus: order.status,
       });
+      if (order.status === OrderStatus.CANCELLED) {
+        throw new DomainException(
+          `Order with reference '${reference}' is cancelled.`,
+          DomainErrorCode.ORDER_ALREADY_PAID,
+          409,
+          { reference }
+        );
+      }
+      if (order.status === OrderStatus.REFUNDED) {
+        throw new DomainException(
+          `Order with reference '${reference}' is refunded.`,
+          DomainErrorCode.ORDER_ALREADY_PAID,
+          409,
+          { reference }
+        );
+      }
       throw new OrderAlreadyPaidException(reference);
     }
 

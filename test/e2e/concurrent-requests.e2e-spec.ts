@@ -58,7 +58,7 @@ describe('API Gateway - E2E Concurrent Requests Pipeline', () => {
       success: false,
       error: expect.objectContaining({
         code: 'IDEMPOTENCY_CONFLICT',
-        message: 'Http Exception',
+        message: 'An identical request with this Idempotency-Key is already in progress',
         requestId: resB.headers['x-request-id'],
         correlationId: resB.headers['x-correlation-id'],
       }),

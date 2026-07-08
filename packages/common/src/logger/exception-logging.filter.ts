@@ -27,6 +27,9 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
       status = exception.statusCode;
       code = exception.code;
       message = exception.message;
+      if (code === 'FRAUD_REJECTED') {
+        code = PlatformErrorCode.PAYMENT_BLOCKED;
+      }
       if (code === PlatformErrorCode.VALIDATION_FAILED && Array.isArray(exception.details)) {
         validationErrors = exception.details as ValidationErrorDetail[];
       } else if (exception.details && typeof exception.details === 'object') {
@@ -51,6 +54,10 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
 
         if (typeof rawError === 'string') {
           code = rawError;
+          if (code === 'REQUEST_ALREADY_IN_PROGRESS') {
+            code = PlatformErrorCode.IDEMPOTENCY_CONFLICT;
+            message = 'An identical request with this Idempotency-Key is already in progress';
+          }
         } else if (typeof bodyObj.message === 'string' && Object.values(PlatformErrorCode).includes(bodyObj.message as PlatformErrorCode)) {
           code = bodyObj.message;
         } else {
