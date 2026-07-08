@@ -113,7 +113,7 @@ describe('Payment Validation Integration', () => {
 
       expect(response.status).toBe(403);
       expect(response.body.success).toBe(false);
-      expect(response.body.error.code).toBe('FRAUD_REJECTED');
+      expect(response.body.error.code).toBe('PAYMENT_BLOCKED');
 
       await assertTransactionRollback(prismaService.client, merchantId, reference);
     });
