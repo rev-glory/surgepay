@@ -10,6 +10,11 @@ describe('PaymentEntity', () => {
         amount: 1000,
         currency: 'USD',
         reference: 'ref-1',
+        requestId: 'req-1',
+        correlationId: 'corr-1',
+        causationId: 'cause-1',
+        createdBy: 'merchant-1',
+        source: 'GATEWAY',
       });
 
       expect(payment.id).toBeDefined();
@@ -17,6 +22,11 @@ describe('PaymentEntity', () => {
       expect(payment.amount).toBe(1000);
       expect(payment.currency).toBe('USD');
       expect(payment.reference).toBe('ref-1');
+      expect(payment.requestId).toBe('req-1');
+      expect(payment.correlationId).toBe('corr-1');
+      expect(payment.causationId).toBe('cause-1');
+      expect(payment.createdBy).toBe('merchant-1');
+      expect(payment.source).toBe('GATEWAY');
     });
 
     it('should not allow direct mutation of the status property', () => {
@@ -25,6 +35,11 @@ describe('PaymentEntity', () => {
         amount: 1000,
         currency: 'USD',
         reference: 'ref-1',
+        requestId: 'req-1',
+        correlationId: 'corr-1',
+        causationId: 'cause-1',
+        createdBy: 'merchant-1',
+        source: 'GATEWAY',
       });
 
       // Attempting direct mutation should trigger typescript error or runtime error
@@ -42,6 +57,11 @@ describe('PaymentEntity', () => {
         amount: 1000,
         currency: 'USD',
         reference: 'ref-1',
+        requestId: 'req-1',
+        correlationId: 'corr-1',
+        causationId: 'cause-1',
+        createdBy: 'merchant-1',
+        source: 'GATEWAY',
       });
 
       payment.transitionTo(PaymentStatus.PROCESSING);
@@ -54,6 +74,11 @@ describe('PaymentEntity', () => {
         amount: 1000,
         currency: 'USD',
         reference: 'ref-1',
+        requestId: 'req-1',
+        correlationId: 'corr-1',
+        causationId: 'cause-1',
+        createdBy: 'merchant-1',
+        source: 'GATEWAY',
       });
 
       payment.transitionTo(PaymentStatus.PROCESSING);
@@ -68,6 +93,11 @@ describe('PaymentEntity', () => {
         amount: 1000,
         currency: 'USD',
         reference: 'ref-1',
+        requestId: 'req-1',
+        correlationId: 'corr-1',
+        causationId: 'cause-1',
+        createdBy: 'merchant-1',
+        source: 'GATEWAY',
       });
 
       expect(() => {

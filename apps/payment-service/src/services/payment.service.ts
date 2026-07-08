@@ -1,5 +1,3 @@
-import { randomUUID } from 'crypto';
-
 import {
   ConflictException,
   Injectable,
@@ -39,6 +37,11 @@ export class PaymentService {
 
   async createPayment(body: CreatePaymentRequestDto, merchantId: string): Promise<PaymentEntity> {
     const normalizedReference = body.reference.trim();
+    const requestId = this.requestContext.requestId || 'N/A';
+    const correlationId = this.requestContext.correlationId || 'N/A';
+    const causationId = this.requestContext.requestId || correlationId;
+    const createdBy = this.requestContext.merchantId || 'MERCHANT';
+    const source = 'GATEWAY';
 
     // 1. DTO Validation and Basic Business checks already completed.
     // 2. Local Duplicate reference check (keeps local invariants before making network calls)
@@ -47,15 +50,17 @@ export class PaymentService {
       this.logger.warn('Duplicate payment reference detected locally', {
         merchantId,
         reference: normalizedReference,
+        requestId,
+        correlationId,
       });
       throw new ConflictException(`Payment with reference '${normalizedReference}' already exists for this merchant.`);
     }
 
     // 3. Synchronous Order Validation Call
-    const correlationId = this.requestContext.correlationId || 'N/A';
     this.logger.info('Initiating synchronous order validation', {
       merchantId,
       reference: normalizedReference,
+      requestId,
       correlationId,
     });
 
@@ -111,6 +116,7 @@ export class PaymentService {
       }
 
       this.logger.error('Order validation failed', error, {
+        requestId,
         correlationId,
         merchantId,
         reference: normalizedReference,
@@ -124,6 +130,7 @@ export class PaymentService {
 
     const durationMs = Date.now() - startTime;
     this.logger.info('Order validation succeeded', {
+      requestId,
       correlationId,
       merchantId,
       reference: normalizedReference,
@@ -134,6 +141,7 @@ export class PaymentService {
 
     // 3b. Synchronous Fraud Pre-check
     this.logger.info('Initiating synchronous fraud precheck', {
+      requestId,
       correlationId,
       merchantId,
       reference: normalizedReference,
@@ -166,6 +174,7 @@ export class PaymentService {
         fraudDecision = 'REJECTED';
         const evalDuration = Date.now() - fraudStartTime;
         this.logger.warn('Payment rejected by fraud rules', {
+          requestId,
           correlationId,
           merchantId,
           reference: normalizedReference,
@@ -205,6 +214,7 @@ export class PaymentService {
       }
 
       this.logger.error('Fraud precheck failed', error, {
+        requestId,
         correlationId,
         merchantId,
         reference: normalizedReference,
@@ -217,6 +227,7 @@ export class PaymentService {
 
     const evalDuration = Date.now() - fraudStartTime;
     this.logger.info('Fraud pre-check passed', {
+      requestId,
       correlationId,
       merchantId,
       reference: normalizedReference,
@@ -231,9 +242,14 @@ export class PaymentService {
       amount: body.amount,
       currency: body.currency,
       reference: normalizedReference,
+      requestId,
+      correlationId,
+      causationId,
+      createdBy,
+      source,
     });
 
-    // Create the Event Envelope payload
+    // Create the Event payload
     const eventPayload = {
       paymentId: payment.id,
       amount: payment.amount,
@@ -243,26 +259,16 @@ export class PaymentService {
       paymentMethod: body.paymentMethod || 'card',
     };
 
-    // Construct the platform standard event envelope
-    const envelope = {
-      eventId: randomUUID(),
-      eventType: 'PaymentInitiated',
-      version: 1,
-      correlationId,
-      causationId: this.requestContext.requestId || correlationId,
-      sagaId: correlationId,
-      timestamp: new Date().toISOString(),
-      payload: eventPayload,
-    };
-
+    // Construct the Outbox aggregate root - delegates envelope construction internally
     const outboxEvent = OutboxEventEntity.create({
       aggregateId: payment.id,
       aggregateType: 'Payment',
       eventType: 'PaymentInitiated',
-      payload: envelope,
+      payload: eventPayload,
+      requestId,
+      correlationId,
+      causationId,
     });
-
-    const requestId = this.requestContext.requestId || 'N/A';
 
     try {
       this.logger.info('Transaction Started', {
@@ -334,6 +340,8 @@ export class PaymentService {
     // Emit structured logs on success
     try {
       this.logger.info('Payment created successfully', {
+        requestId,
+        correlationId,
         merchantId,
         paymentId: persisted.id,
         amount: persisted.amount,

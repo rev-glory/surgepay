@@ -70,6 +70,7 @@ describe('PaymentService', () => {
     mockRequestContext = {
       correlationId: 'test-correlation-id',
       requestId: 'test-request-id',
+      merchantId: 'test-merchant-id',
     } as unknown as jest.Mocked<RequestContextService>;
 
     // Setup Mock Logger
@@ -108,7 +109,15 @@ describe('PaymentService', () => {
     mockOrderHttpClient.post.mockResolvedValue({ valid: true, orderId: 'test-order-uuid' });
     mockFraudHttpClient.post.mockResolvedValue({ approved: true, riskScore: 12 });
     
-    const mockPersisted = PaymentEntity.create({ ...mockPayload, merchantId: mockMerchantId });
+    const mockPersisted = PaymentEntity.create({
+      ...mockPayload,
+      merchantId: mockMerchantId,
+      requestId: 'test-request-id',
+      correlationId: 'test-correlation-id',
+      causationId: 'test-request-id',
+      createdBy: 'test-merchant-id',
+      source: 'GATEWAY',
+    });
     paymentRepository.create.mockResolvedValue(mockPersisted);
     outboxRepository.save.mockResolvedValue({} as unknown as OutboxEventEntity);
 
@@ -140,7 +149,15 @@ describe('PaymentService', () => {
   });
 
   it('should fail-fast on duplicate reference and bypass order validation and persistence', async () => {
-    const mockExisting = PaymentEntity.create({ ...mockPayload, merchantId: mockMerchantId });
+    const mockExisting = PaymentEntity.create({
+      ...mockPayload,
+      merchantId: mockMerchantId,
+      requestId: 'test-request-id',
+      correlationId: 'test-correlation-id',
+      causationId: 'test-request-id',
+      createdBy: 'test-merchant-id',
+      source: 'GATEWAY',
+    });
     paymentRepository.findByReference.mockResolvedValue(mockExisting);
 
     await expect(
@@ -282,7 +299,15 @@ describe('PaymentService', () => {
       mockOrderHttpClient.post.mockResolvedValue({ valid: true, orderId: 'test-order-uuid' });
       mockFraudHttpClient.post.mockResolvedValue({ approved: true, riskScore: 12 });
 
-      const mockPersisted = PaymentEntity.create({ ...mockPayload, merchantId: mockMerchantId });
+      const mockPersisted = PaymentEntity.create({
+        ...mockPayload,
+        merchantId: mockMerchantId,
+        requestId: 'test-request-id',
+        correlationId: 'test-correlation-id',
+        causationId: 'test-request-id',
+        createdBy: 'test-merchant-id',
+        source: 'GATEWAY',
+      });
       paymentRepository.create.mockResolvedValue(mockPersisted);
 
       const dbError = new Error('Outbox write constraint violation');

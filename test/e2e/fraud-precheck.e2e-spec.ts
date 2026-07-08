@@ -6,7 +6,7 @@ import { INestApplication } from '@nestjs/common';
 import * as crypto from 'crypto';
 
 import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
-import { clearDatabase, createTestMerchant, createTestOrder, getPaymentCount, getOutboxCount, getOutboxEvents } from '../helpers/db-helper';
+import { clearDatabase, createTestMerchant, createTestOrder, getPaymentCount, getOutboxCount, getOutboxEvents, getPaymentRecords } from '../helpers/db-helper';
 import { clearRedis } from '../helpers/redis-helper';
 import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
 
@@ -74,6 +74,17 @@ describe('Fraud Pre-check & Risk Screening - E2E Integration Pipeline', () => {
     const outboxCount = await getOutboxCount(paymentId);
     expect(outboxCount).toBe(1);
 
+    // Verify Payment table properties
+    const paymentRecords = await getPaymentRecords(merchantId, orderId);
+    const paymentRecord = paymentRecords[0];
+    expect(paymentRecord).toBeDefined();
+    expect(paymentRecord.requestId).toBeDefined();
+    expect(paymentRecord.correlationId).toBeDefined();
+    expect(paymentRecord.causationId).toBeDefined();
+    expect(paymentRecord.createdBy).toBe(merchantId);
+    expect(paymentRecord.source).toBe('GATEWAY');
+
+
     // Verify OutboxEvent details
     const outboxRecords = await getOutboxEvents(paymentId);
     const outboxRecord = outboxRecords[0];
@@ -81,15 +92,19 @@ describe('Fraud Pre-check & Risk Screening - E2E Integration Pipeline', () => {
     expect(outboxRecord.status).toBe('PENDING');
     expect(outboxRecord.retryCount).toBe(0);
     expect(outboxRecord.publishedAt).toBeNull();
+    expect(outboxRecord.requestId).toBe(paymentRecord.requestId);
+    expect(outboxRecord.correlationId).toBe(paymentRecord.correlationId);
+    expect(outboxRecord.causationId).toBe(paymentRecord.causationId);
 
     // Verify complete event envelope
     const envelope = outboxRecord.payload;
     expect(envelope).toBeDefined();
-    expect(envelope.eventId).toBeDefined();
+    expect(envelope.eventId).toBe(outboxRecord.id);
     expect(envelope.eventType).toBe('PaymentInitiated');
     expect(envelope.version).toBe(1);
-    expect(envelope.correlationId).toBeDefined();
-    expect(envelope.causationId).toBeDefined();
+    expect(envelope.correlationId).toBe(paymentRecord.correlationId);
+    expect(envelope.causationId).toBe(paymentRecord.causationId);
+    expect(envelope.requestId).toBe(paymentRecord.requestId);
     expect(envelope.timestamp).toBeDefined();
     expect(envelope.payload).toEqual({
       paymentId: paymentId,

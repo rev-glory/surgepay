@@ -13,6 +13,11 @@ export class PaymentEntity {
     public readonly currency: string,
     status: PaymentStatus,
     public readonly reference: string,
+    public readonly requestId: string,
+    public readonly correlationId: string,
+    public readonly causationId: string,
+    public readonly createdBy: string,
+    public readonly source: string,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
   ) {
@@ -32,6 +37,11 @@ export class PaymentEntity {
     amount: number;
     currency: string;
     reference: string;
+    requestId: string;
+    correlationId: string;
+    causationId: string;
+    createdBy: string;
+    source: string;
   }): PaymentEntity {
     return new PaymentEntity(
       randomUUID(),
@@ -40,6 +50,11 @@ export class PaymentEntity {
       params.currency,
       PaymentStatus.PENDING,
       params.reference,
+      params.requestId,
+      params.correlationId,
+      params.causationId,
+      params.createdBy,
+      params.source,
       new Date(),
       new Date(),
     );

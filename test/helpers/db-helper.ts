@@ -159,14 +159,24 @@ export async function getOutboxCount(aggregateId: string): Promise<number> {
   return Number(result[0]?.count ?? 0);
 }
 
-/**
- * Seeding / verification helper to get outbox records from the database.
- */
 export async function getOutboxEvents(aggregateId: string): Promise<any[]> {
   const prisma = getPrismaClient();
   const result = await prisma.$queryRawUnsafe<any[]>(
     `SELECT * FROM "payment"."OutboxEvent" WHERE "aggregateId" = $1::uuid;`,
     aggregateId,
+  );
+  return result;
+}
+
+/**
+ * Seeding / verification helper to get payment records in the database.
+ */
+export async function getPaymentRecords(merchantId: string, reference: string): Promise<any[]> {
+  const prisma = getPrismaClient();
+  const result = await prisma.$queryRawUnsafe<any[]>(
+    `SELECT * FROM "payment"."Payment" WHERE "merchantId" = $1::uuid AND reference = $2;`,
+    merchantId,
+    reference,
   );
   return result;
 }

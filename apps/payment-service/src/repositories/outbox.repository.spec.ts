@@ -49,6 +49,9 @@ describe('OutboxRepository', () => {
         aggregateType: 'Payment',
         eventType: 'PaymentInitiated',
         payload: { eventId: 'event-1', correlationId: 'corr-1' },
+        requestId: 'req-1',
+        correlationId: 'corr-1',
+        causationId: 'cause-1',
       });
 
       const dbModel = {
@@ -58,6 +61,9 @@ describe('OutboxRepository', () => {
         eventType: entity.eventType,
         payload: entity.payload,
         status: OutboxStatus.PENDING,
+        requestId: 'req-1',
+        correlationId: 'corr-1',
+        causationId: 'cause-1',
         createdAt: entity.createdAt,
         publishedAt: null,
         retryCount: 0,
@@ -74,6 +80,9 @@ describe('OutboxRepository', () => {
           aggregateType: entity.aggregateType,
           eventType: entity.eventType,
           status: OutboxStatus.PENDING,
+          requestId: 'req-1',
+          correlationId: 'corr-1',
+          causationId: 'cause-1',
         }),
       });
 
@@ -84,6 +93,8 @@ describe('OutboxRepository', () => {
         expect.objectContaining({
           outboxEventId: entity.id,
           correlationId: 'corr-1',
+          requestId: 'req-1',
+          causationId: 'cause-1',
         }),
       );
     });
@@ -99,6 +110,9 @@ describe('OutboxRepository', () => {
           eventType: 'PaymentInitiated',
           payload: {},
           status: OutboxStatus.PENDING,
+          requestId: 'req-1',
+          correlationId: 'corr-1',
+          causationId: 'cause-1',
           createdAt: new Date(),
           publishedAt: null,
           retryCount: 0,
@@ -135,6 +149,9 @@ describe('OutboxRepository', () => {
         eventType: 'PaymentInitiated',
         payload: {},
         status: OutboxStatus.PUBLISHED,
+        requestId: 'req-1',
+        correlationId: 'corr-1',
+        causationId: 'cause-1',
         createdAt: new Date(),
         publishedAt: new Date(),
         retryCount: 0,
@@ -166,6 +183,9 @@ describe('OutboxRepository', () => {
         eventType: 'PaymentInitiated',
         payload: {},
         status: OutboxStatus.RETRYING,
+        requestId: 'req-1',
+        correlationId: 'corr-1',
+        causationId: 'cause-1',
         createdAt: new Date(),
         publishedAt: null,
         retryCount: 1,
@@ -199,6 +219,9 @@ describe('OutboxRepository', () => {
         eventType: 'PaymentInitiated',
         payload: {},
         status: OutboxStatus.FAILED,
+        requestId: 'req-1',
+        correlationId: 'corr-1',
+        causationId: 'cause-1',
         createdAt: new Date(),
         publishedAt: null,
         retryCount: 0,

@@ -16,20 +16,27 @@ enum PaymentStatus {
 }
 
 model Payment {
-  id         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  merchantId String        @db.Uuid
-  amount     Int
-  currency   String
-  status     PaymentStatus @default(PENDING)
-  reference  String
-  createdAt  DateTime      @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime      @updatedAt @db.Timestamptz(6)
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  merchantId    String        @db.Uuid
+  amount        Int
+  currency      String
+  status        PaymentStatus @default(PENDING)
+  reference     String
+  requestId     String
+  correlationId String
+  causationId   String
+  createdBy     String
+  source        String
+  createdAt     DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime      @updatedAt @db.Timestamptz(6)
 
   @@unique([merchantId, reference])
   @@index([merchantId])
   @@index([status])
   @@index([createdAt])
   @@index([reference])
+  @@index([correlationId])
+  @@index([requestId])
 }
 
 enum OutboxStatus {
@@ -46,6 +53,9 @@ model OutboxEvent {
   eventType     String
   payload       Json
   status        OutboxStatus @default(PENDING)
+  requestId     String
+  correlationId String
+  causationId   String
   createdAt     DateTime     @default(now()) @db.Timestamptz(6)
   publishedAt   DateTime?    @db.Timestamptz(6)
   retryCount    Int          @default(0)
@@ -53,4 +63,6 @@ model OutboxEvent {
   @@index([status])
   @@index([createdAt])
   @@index([eventType])
+  @@index([correlationId])
+  @@index([requestId])
 }

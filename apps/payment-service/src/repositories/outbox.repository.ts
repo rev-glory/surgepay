@@ -22,6 +22,9 @@ export class OutboxRepository {
     eventType: string;
     payload: Prisma.JsonValue;
     status: OutboxStatus;
+    requestId: string;
+    correlationId: string;
+    causationId: string;
     createdAt: Date;
     publishedAt: Date | null;
     retryCount: number;
@@ -33,6 +36,9 @@ export class OutboxRepository {
       model.eventType,
       model.payload as Record<string, unknown>,
       model.status,
+      model.requestId,
+      model.correlationId,
+      model.causationId,
       model.createdAt,
       model.publishedAt,
       model.retryCount,
@@ -49,6 +55,9 @@ export class OutboxRepository {
         eventType: entity.eventType,
         payload: entity.payload as Prisma.InputJsonValue,
         status: entity.status,
+        requestId: entity.requestId,
+        correlationId: entity.correlationId,
+        causationId: entity.causationId,
         createdAt: entity.createdAt,
         publishedAt: entity.publishedAt,
         retryCount: entity.retryCount,
@@ -57,17 +66,14 @@ export class OutboxRepository {
 
     const mapped = this.mapToEntity(model);
 
-    // Retrieve correlationId from the payload if it exists
-    const correlationId = (entity.payload && typeof entity.payload === 'object')
-      ? String((entity.payload as Record<string, unknown>).correlationId || 'N/A')
-      : 'N/A';
-
     this.logger.info('Outbox record persisted successfully', {
       outboxEventId: mapped.id,
       aggregateId: mapped.aggregateId,
       aggregateType: mapped.aggregateType,
       eventType: mapped.eventType,
-      correlationId,
+      correlationId: mapped.correlationId,
+      requestId: mapped.requestId,
+      causationId: mapped.causationId,
       outboxStatus: mapped.status,
       timestamp: mapped.createdAt.toISOString(),
     });

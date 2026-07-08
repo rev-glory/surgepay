@@ -16,6 +16,11 @@ export class PaymentRepository {
       model.currency,
       model.status,
       model.reference,
+      model.requestId,
+      model.correlationId,
+      model.causationId,
+      model.createdBy,
+      model.source,
       model.createdAt,
       model.updatedAt,
     );
@@ -31,6 +36,11 @@ export class PaymentRepository {
         currency: entity.currency,
         status: entity.status,
         reference: entity.reference,
+        requestId: entity.requestId,
+        correlationId: entity.correlationId,
+        causationId: entity.causationId,
+        createdBy: entity.createdBy,
+        source: entity.source,
       },
     });
     return this.mapToEntity(model);
