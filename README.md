@@ -425,38 +425,6 @@ If you run into issues during workspace setup, use the following guidelines:
 * [x] All End-to-End tests pass successfully against local docker infrastructure
 * [x] Local monorepo compiles clean with zero linter errors
 
-### 14.1 Preparation for Next iteration (Payment Request Path)
-With the synchronous foundation of current iteration verified and stabilized, next iteration will introduce the first business logic workflow: processing an active payment.
-
-The synchronous payment pipeline will follow this request path:
-```
-Client Request
-    │
-    ▼
-API Gateway
-    │
-    ▼
-Merchant Authentication
-    │
-    ▼
-Idempotency Check
-    │
-    ▼
-Payment Service
-    │
-    ▼
-Order Validation (Synchronous check against Order Service)
-    │
-    ▼
-Fraud Pre-check (Synchronous fraud score validation, <50ms)
-    │
-    ▼
-Payment Database Write + Transactional Outbox (Single DB transaction)
-    │
-    ▼
-202 Accepted (Response to Client)
-```
-During next iteration, the client's synchronous wait ends once the payment and its outbound event are safely persisted in a single PostgreSQL transaction. All downstream workflows (ledger indexing, balance updates, notifications) will run asynchronously in subsequent phases.
 
 ---
 
