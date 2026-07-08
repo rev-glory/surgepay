@@ -7,6 +7,7 @@ interface ClientLike {
 const globalForPrisma = global as unknown as Record<string, unknown>;
 
 const activeClients: ClientLike[] = [];
+const clientCache = new Map<string, ClientLike>();
 
 export interface FactoryOptions {
   connectionLimit?: number;
@@ -34,16 +35,20 @@ export function getOrCreatePrismaClient<T extends ClientLike>(
     options.connectionLimit ??
     (process.env.DATABASE_CONNECTION_LIMIT
       ? parseInt(process.env.DATABASE_CONNECTION_LIMIT, 10)
-      : undefined);
+      : process.env.DATABASE_POOL_SIZE
+        ? parseInt(process.env.DATABASE_POOL_SIZE, 10)
+        : undefined);
   const poolTimeout =
     options.poolTimeout ??
     (process.env.DATABASE_POOL_TIMEOUT
       ? parseInt(process.env.DATABASE_POOL_TIMEOUT, 10)
-      : undefined);
+      : process.env.DATABASE_CONNECT_TIMEOUT
+        ? parseInt(process.env.DATABASE_CONNECT_TIMEOUT, 10) / 1000
+        : undefined);
   const socketTimeout =
     options.socketTimeout ??
     (process.env.DATABASE_IDLE_TIMEOUT
-      ? parseInt(process.env.DATABASE_IDLE_TIMEOUT, 10)
+      ? parseInt(process.env.DATABASE_IDLE_TIMEOUT, 10) / 1000
       : undefined);
 
   const finalUrl = buildDatabaseUrl(databaseUrl, {
@@ -65,10 +70,15 @@ export function getOrCreatePrismaClient<T extends ClientLike>(
         : (['error'] as const),
   };
 
+  const cacheKey = `${name}_${finalUrl}`;
+
   if (process.env.NODE_ENV === 'production') {
-    const client = new ClientConstructor(prismaOptions);
-    activeClients.push(client);
-    return client;
+    if (!clientCache.has(cacheKey)) {
+      const client = new ClientConstructor(prismaOptions);
+      clientCache.set(cacheKey, client);
+      activeClients.push(client);
+    }
+    return clientCache.get(cacheKey) as T;
   }
 
   const globalKey = `__prisma_client_${name}__`;
@@ -94,4 +104,5 @@ export async function disconnectAll(): Promise<void> {
     }),
   );
   activeClients.length = 0;
+  clientCache.clear();
 }

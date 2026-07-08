@@ -29,6 +29,8 @@ export interface HttpConfig {
   port: number;
   host: string;
   apiPrefix: string;
+  keepAlive?: boolean;
+  maxSockets?: number;
 }
 
 export interface LoggingConfig {

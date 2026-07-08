@@ -12,6 +12,9 @@ import {
   OrderAmountMismatchException,
   OrderNotFoundException,
   RequestContextService,
+  orderValidationDuration,
+  fraudPrecheckDuration,
+  paymentTransactionDuration,
 } from '@surgepay/common';
 import {
   DownstreamResponseException,
@@ -123,6 +126,19 @@ export class PaymentService {
         mappedError = new InternalServerErrorException('An unexpected error occurred during order validation.');
       }
 
+      orderValidationDuration.record(durationMs, {
+        merchantId,
+        status: validationResult,
+      });
+
+      this.logger.info('Order validation stage latency', {
+        requestId,
+        correlationId,
+        merchantId,
+        stage: 'order-validation',
+        durationMs,
+      });
+
       this.logger.error('Order validation failed', error, {
         requestId,
         correlationId,
@@ -137,6 +153,19 @@ export class PaymentService {
     }
 
     const durationMs = Date.now() - startTime;
+    orderValidationDuration.record(durationMs, {
+      merchantId,
+      status: validationResult,
+    });
+
+    this.logger.info('Order validation stage latency', {
+      requestId,
+      correlationId,
+      merchantId,
+      stage: 'order-validation',
+      durationMs,
+    });
+
     this.logger.info('Order validation succeeded', {
       requestId,
       correlationId,
@@ -145,14 +174,6 @@ export class PaymentService {
       orderId,
       durationMs,
       validationResult,
-    });
-
-    // 3b. Synchronous Fraud Pre-check
-    this.logger.info('Initiating synchronous fraud precheck', {
-      requestId,
-      correlationId,
-      merchantId,
-      reference: normalizedReference,
     });
 
     const fraudStartTime = Date.now();
@@ -203,6 +224,20 @@ export class PaymentService {
       const evalDuration = Date.now() - fraudStartTime;
       let mappedError: Error;
 
+      const finalDecision = error instanceof FraudRejectedException ? 'REJECTED' : fraudDecision;
+
+      this.logger.info('Fraud pre-check stage latency', {
+        requestId,
+        correlationId,
+        merchantId,
+        stage: 'fraud-precheck',
+        durationMs: evalDuration,
+      });
+      fraudPrecheckDuration.record(evalDuration, {
+        merchantId,
+        status: finalDecision,
+      });
+
       if (error instanceof FraudRejectedException) {
         throw error;
       }
@@ -247,6 +282,18 @@ export class PaymentService {
     }
 
     const evalDuration = Date.now() - fraudStartTime;
+    this.logger.info('Fraud pre-check stage latency', {
+      requestId,
+      correlationId,
+      merchantId,
+      stage: 'fraud-precheck',
+      durationMs: evalDuration,
+    });
+    fraudPrecheckDuration.record(evalDuration, {
+      merchantId,
+      status: fraudDecision,
+    });
+
     this.logger.info('Fraud pre-check passed', {
       requestId,
       correlationId,
@@ -303,6 +350,7 @@ export class PaymentService {
     }
 
     let persisted: PaymentEntity;
+    const dbStartTime = Date.now();
     try {
       const result = await this.prismaService.client.$transaction(async (tx) => {
         const persistedPayment = await this.paymentRepository.create(payment, tx);
@@ -333,7 +381,36 @@ export class PaymentService {
         return persistedPayment;
       });
       persisted = result;
+      const dbDurationMs = Date.now() - dbStartTime;
+
+      this.logger.info('Database transaction stage latency', {
+        requestId,
+        correlationId,
+        merchantId,
+        paymentId: payment.id,
+        stage: 'database-transaction',
+        durationMs: dbDurationMs,
+      });
+      paymentTransactionDuration.record(dbDurationMs, {
+        merchantId,
+        status: 'success',
+      });
     } catch (error: unknown) {
+      const dbDurationMs = Date.now() - dbStartTime;
+
+      this.logger.info('Database transaction stage latency', {
+        requestId,
+        correlationId,
+        merchantId,
+        paymentId: payment.id,
+        stage: 'database-transaction',
+        durationMs: dbDurationMs,
+      });
+      paymentTransactionDuration.record(dbDurationMs, {
+        merchantId,
+        status: 'error',
+      });
+
       try {
         this.logger.error('Transaction Rolled Back', error instanceof Error ? error : new Error(String(error)), {
           requestId,
