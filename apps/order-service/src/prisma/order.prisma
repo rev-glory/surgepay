@@ -1,0 +1,33 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+enum OrderStatus {
+  CREATED
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+model Order {
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  merchantId String      @db.Uuid
+  amount     Int
+  currency   String
+  status     OrderStatus @default(CREATED)
+  reference  String
+  createdAt  DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime    @updatedAt @db.Timestamptz(6)
+
+  @@unique([merchantId, reference])
+  @@index([merchantId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([reference])
+}

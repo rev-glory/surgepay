@@ -9,6 +9,7 @@ import { AppModule as GatewayModule } from '../../apps/gateway/src/app.module';
 import { AppModule as IdempotencyModule } from '../../apps/idempotency-service/src/app.module';
 import { AppModule as MerchantModule } from '../../apps/merchant-service/src/app.module';
 import { AppModule as PaymentModule } from '../../apps/payment-service/src/app.module';
+import { AppModule as OrderModule } from '../../apps/order-service/src/app.module';
 
 import {
   AppValidationPipe,
@@ -24,6 +25,7 @@ let gatewayApp: INestApplication | null = null;
 let merchantApp: INestApplication | null = null;
 let idempotencyApp: INestApplication | null = null;
 let paymentApp: INestApplication | null = null;
+let orderApp: INestApplication | null = null;
 
 let redisClient: Redis | null = null;
 let prismaClient: PrismaClient | null = null;
@@ -83,6 +85,15 @@ export async function setupE2EEnvironment() {
       env: {
         ...process.env,
         DATABASE_URL: paymentDatabaseUrl.toString(),
+      },
+    });
+
+    const orderDatabaseUrl = new URL(process.env.DATABASE_URL);
+    orderDatabaseUrl.searchParams.set('schema', 'order');
+    execSync('npx prisma db push --schema=apps/order-service/src/prisma/order.prisma --skip-generate', {
+      env: {
+        ...process.env,
+        DATABASE_URL: orderDatabaseUrl.toString(),
       },
     });
   }
@@ -200,7 +211,31 @@ export async function setupE2EEnvironment() {
   const paymentPort = (paymentApp.getHttpServer().address() as AddressInfo).port;
   process.env.PAYMENT_SERVICE_URL = `http://127.0.0.1:${paymentPort}`;
 
-  // 7. Boot API Gateway
+  // 7. Boot Order Service
+  process.env.SERVICE_NAME = 'order-service';
+  const orderModuleFixture: TestingModule = await Test.createTestingModule({
+    imports: [OrderModule],
+  }).compile();
+  orderApp = orderModuleFixture.createNestApplication();
+  orderApp.setGlobalPrefix('api', {
+    exclude: [
+      { path: 'health', method: RequestMethod.ALL },
+      { path: 'health/live', method: RequestMethod.ALL },
+      { path: 'health/ready', method: RequestMethod.ALL },
+    ],
+  });
+  orderApp.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: '1',
+  });
+  const orderLogger = await orderApp.resolve(LoggerService);
+  orderApp.useGlobalFilters(new ExceptionLoggingFilter(orderLogger));
+  orderApp.useGlobalInterceptors(new LoggingInterceptor(orderLogger));
+  await orderApp.listen(0);
+  const orderPort = (orderApp.getHttpServer().address() as AddressInfo).port;
+  process.env.ORDER_SERVICE_URL = `http://127.0.0.1:${orderPort}`;
+
+  // 8. Boot API Gateway
   process.env.SERVICE_NAME = 'gateway';
   const gatewayModuleFixture: TestingModule = await Test.createTestingModule({
     imports: [GatewayModule],
@@ -221,6 +256,7 @@ export async function setupE2EEnvironment() {
     merchantApp,
     idempotencyApp,
     paymentApp,
+    orderApp,
   };
 }
 
@@ -240,6 +276,10 @@ export async function teardownE2EEnvironment() {
   if (paymentApp) {
     await paymentApp.close();
     paymentApp = null;
+  }
+  if (orderApp) {
+    await orderApp.close();
+    orderApp = null;
   }
   if (redisClient) {
     redisClient.disconnect();

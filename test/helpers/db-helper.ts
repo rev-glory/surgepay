@@ -21,6 +21,11 @@ export async function clearDatabase(): Promise<void> {
   } catch (err) {
     // Ignore if table/schema is not pushed yet in other contexts
   }
+  try {
+    await prisma.$executeRawUnsafe('TRUNCATE TABLE "order"."Order" CASCADE;');
+  } catch (err) {
+    // Ignore if table/schema is not pushed yet in other contexts
+  }
 }
 
 /**
@@ -92,4 +97,32 @@ export async function createRevokedApiKey(options: {
       revokedAt: new Date(),
     },
   });
+}
+
+/**
+ * Seeding helper for test orders consistent with Payment Service test setup.
+ */
+export async function createTestOrder(options: {
+  merchantId: string;
+  reference: string;
+  amount: number;
+  currency: string;
+  status: string;
+}): Promise<{ id: string }> {
+  const prisma = getPrismaClient();
+  const results = await prisma.$queryRawUnsafe<{ id: string }[]>(
+    `INSERT INTO "order"."Order" (id, "merchantId", amount, currency, status, reference, "createdAt", "updatedAt")
+     VALUES (gen_random_uuid(), $1::uuid, $2, $3, $4::"order"."OrderStatus", $5, NOW(), NOW())
+     RETURNING id;`,
+    options.merchantId,
+    options.amount,
+    options.currency,
+    options.status,
+    options.reference,
+  );
+  const firstResult = results[0];
+  if (!firstResult) {
+    throw new Error('Failed to create test order in database.');
+  }
+  return firstResult;
 }
