@@ -1,9 +1,9 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Req } from '@nestjs/common';
 import { Request } from 'express';
 
 import { CreatePaymentRequestDto, LoggerService } from '@surgepay/common';
 
-import { PaymentService } from './payment.service';
+import { PaymentService } from '../services/payment.service';
 
 @Controller('payments')
 export class PaymentController {
@@ -14,10 +14,6 @@ export class PaymentController {
     this.logger.setContext('PaymentController');
   }
 
-  /**
-   * Placeholder endpoint for handling payment proxying end-to-end.
-   * Returns a static ACCEPTED status.
-   */
   @Post()
   @HttpCode(HttpStatus.ACCEPTED) // Returns 202 Accepted
   async createPayment(
@@ -30,5 +26,11 @@ export class PaymentController {
       merchantId: req.headers['x-merchant-id'] as string | undefined,
     });
     return this.paymentService.createPlaceholderPayment(body);
+  }
+
+  @Get(':id')
+  async getPayment(@Param('id') id: string): Promise<{ id: string; status: string }> {
+    this.logger.info('Retrieving payment by ID', { id });
+    return this.paymentService.getPlaceholderPayment(id);
   }
 }

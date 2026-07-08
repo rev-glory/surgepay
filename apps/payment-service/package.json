@@ -17,6 +17,7 @@
     "@nestjs/core": "^10.4.15",
     "@nestjs/platform-express": "^10.4.15",
     "@nestjs/terminus": "^10.2.0",
+    "@database": "workspace:*",
     "@surgepay/common": "workspace:*",
     "@surgepay/config": "workspace:*",
     "@surgepay/contracts": "workspace:*",
