@@ -3,7 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import * as crypto from 'crypto';
 
 import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
-import { clearDatabase, createTestMerchant } from '../helpers/db-helper';
+import { clearDatabase, createTestMerchant, createTestOrder } from '../helpers/db-helper';
 import { clearRedis, getIdempotencyRecord } from '../helpers/redis-helper';
 import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
 
@@ -29,12 +29,23 @@ describe('API Gateway - E2E Idempotency Pipeline', () => {
 
   it('should replay the cached response on duplicate requests', async () => {
     const idempotencyKey = `idem_e2e_dup_${Date.now()}`;
+    const orderId = crypto.randomUUID();
+
+    // Seed matching order in Order Service database before validation call
+    await createTestOrder({
+      merchantId,
+      reference: orderId,
+      amount: 500,
+      currency: 'USD',
+      status: 'CREATED',
+    });
+
     const payload = {
       idempotencyKey,
       amount: 500,
       currency: 'USD',
       merchantId,
-      orderId: crypto.randomUUID(),
+      orderId,
       paymentMethod: 'card',
     };
 
@@ -63,6 +74,15 @@ describe('API Gateway - E2E Idempotency Pipeline', () => {
   it('should reject request payload changes on the same key with 422 Unprocessable Entity', async () => {
     const idempotencyKey = `idem_e2e_mismatch_${Date.now()}`;
     const orderId = crypto.randomUUID();
+
+    // Seed matching order in Order Service database before validation call
+    await createTestOrder({
+      merchantId,
+      reference: orderId,
+      amount: 100,
+      currency: 'USD',
+      status: 'CREATED',
+    });
 
     const payload1 = {
       idempotencyKey,

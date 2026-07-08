@@ -3,7 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import * as crypto from 'crypto';
 
 import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
-import { clearDatabase, createTestMerchant } from '../helpers/db-helper';
+import { clearDatabase, createTestMerchant, createTestOrder } from '../helpers/db-helper';
 import { clearRedis } from '../helpers/redis-helper';
 import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
 
@@ -28,6 +28,18 @@ describe('API Gateway - E2E Rate Limiting Pipeline', () => {
   });
 
   it('should allow 100 requests and reject the 101st request with 429 Too Many Requests', async () => {
+    // Seed 101 matching orders with valid UUID references in Order Service database before validation calls
+    const orderIds = Array.from({ length: 101 }, () => crypto.randomUUID());
+    for (let i = 0; i < 101; i++) {
+      await createTestOrder({
+        merchantId,
+        reference: orderIds[i]!,
+        amount: 100,
+        currency: 'USD',
+        status: 'CREATED',
+      });
+    }
+
     // 1. Send 100 requests concurrently
     const requests = [];
     for (let i = 1; i <= 100; i++) {
@@ -42,7 +54,7 @@ describe('API Gateway - E2E Rate Limiting Pipeline', () => {
             amount: 100,
             currency: 'USD',
             merchantId,
-            orderId: crypto.randomUUID(),
+            orderId: orderIds[i - 1]!,
             paymentMethod: 'card',
           })
       );
@@ -75,7 +87,7 @@ describe('API Gateway - E2E Rate Limiting Pipeline', () => {
         amount: 100,
         currency: 'USD',
         merchantId,
-        orderId: crypto.randomUUID(),
+        orderId: orderIds[100]!,
         paymentMethod: 'card',
       });
 

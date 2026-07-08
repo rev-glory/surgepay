@@ -3,7 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import * as crypto from 'crypto';
 
 import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
-import { clearDatabase, createTestMerchant, createRevokedApiKey } from '../helpers/db-helper';
+import { clearDatabase, createTestMerchant, createRevokedApiKey, createTestOrder } from '../helpers/db-helper';
 import { clearRedis } from '../helpers/redis-helper';
 import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
 
@@ -29,6 +29,17 @@ describe('API Gateway - E2E Authentication Pipeline', () => {
     const merchantId = merchant.merchantId;
 
     const idempotencyKey = `idem_auth_ok_${Date.now()}`;
+    const orderId = crypto.randomUUID();
+
+    // Seed matching order in Order Service database before validation call
+    await createTestOrder({
+      merchantId,
+      reference: orderId,
+      amount: 100,
+      currency: 'USD',
+      status: 'CREATED',
+    });
+
     const response = await request(app.getHttpServer())
       .post('/api/v1/payments')
       .set('x-api-key', MERCHANT_FIXTURES.active.apiKey)
@@ -38,7 +49,7 @@ describe('API Gateway - E2E Authentication Pipeline', () => {
         amount: 100,
         currency: 'USD',
         merchantId,
-        orderId: crypto.randomUUID(),
+        orderId,
         paymentMethod: 'card',
       });
 

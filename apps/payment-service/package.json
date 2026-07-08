@@ -21,6 +21,7 @@
     "@database": "workspace:*",
     "@prisma/client": "^5.15.0",
     "@surgepay/common": "workspace:*",
+    "@surgepay/common-http": "workspace:*",
     "@surgepay/config": "workspace:*",
     "@surgepay/contracts": "workspace:*",
     "class-transformer": "^0.5.1",

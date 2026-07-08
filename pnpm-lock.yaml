@@ -468,6 +468,9 @@ importers:
       '@surgepay/common':
         specifier: workspace:*
         version: link:../../packages/common
+      '@surgepay/common-http':
+        specifier: workspace:*
+        version: link:../../packages/common/http
       '@surgepay/config':
         specifier: workspace:*
         version: link:../../packages/config

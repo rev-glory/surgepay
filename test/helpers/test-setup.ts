@@ -187,31 +187,7 @@ export async function setupE2EEnvironment() {
   const idempotencyPort = (idempotencyApp.getHttpServer().address() as AddressInfo).port;
   process.env.IDEMPOTENCY_SERVICE_URL = `http://127.0.0.1:${idempotencyPort}`;
 
-  // 6. Boot Payment Service
-  process.env.SERVICE_NAME = 'payment-service';
-  const paymentModuleFixture: TestingModule = await Test.createTestingModule({
-    imports: [PaymentModule],
-  }).compile();
-  paymentApp = paymentModuleFixture.createNestApplication();
-  paymentApp.setGlobalPrefix('api', {
-    exclude: [
-      { path: 'health', method: RequestMethod.ALL },
-      { path: 'health/live', method: RequestMethod.ALL },
-      { path: 'health/ready', method: RequestMethod.ALL },
-    ],
-  });
-  paymentApp.enableVersioning({
-    type: VersioningType.URI,
-    defaultVersion: '1',
-  });
-  const paymentLogger = await paymentApp.resolve(LoggerService);
-  paymentApp.useGlobalFilters(new ExceptionLoggingFilter(paymentLogger));
-  paymentApp.useGlobalInterceptors(new LoggingInterceptor(paymentLogger));
-  await paymentApp.listen(0);
-  const paymentPort = (paymentApp.getHttpServer().address() as AddressInfo).port;
-  process.env.PAYMENT_SERVICE_URL = `http://127.0.0.1:${paymentPort}`;
-
-  // 7. Boot Order Service
+  // 6. Boot Order Service
   process.env.SERVICE_NAME = 'order-service';
   const orderModuleFixture: TestingModule = await Test.createTestingModule({
     imports: [OrderModule],
@@ -234,6 +210,30 @@ export async function setupE2EEnvironment() {
   await orderApp.listen(0);
   const orderPort = (orderApp.getHttpServer().address() as AddressInfo).port;
   process.env.ORDER_SERVICE_URL = `http://127.0.0.1:${orderPort}`;
+
+  // 7. Boot Payment Service
+  process.env.SERVICE_NAME = 'payment-service';
+  const paymentModuleFixture: TestingModule = await Test.createTestingModule({
+    imports: [PaymentModule],
+  }).compile();
+  paymentApp = paymentModuleFixture.createNestApplication();
+  paymentApp.setGlobalPrefix('api', {
+    exclude: [
+      { path: 'health', method: RequestMethod.ALL },
+      { path: 'health/live', method: RequestMethod.ALL },
+      { path: 'health/ready', method: RequestMethod.ALL },
+    ],
+  });
+  paymentApp.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: '1',
+  });
+  const paymentLogger = await paymentApp.resolve(LoggerService);
+  paymentApp.useGlobalFilters(new ExceptionLoggingFilter(paymentLogger));
+  paymentApp.useGlobalInterceptors(new LoggingInterceptor(paymentLogger));
+  await paymentApp.listen(0);
+  const paymentPort = (paymentApp.getHttpServer().address() as AddressInfo).port;
+  process.env.PAYMENT_SERVICE_URL = `http://127.0.0.1:${paymentPort}`;
 
   // 8. Boot API Gateway
   process.env.SERVICE_NAME = 'gateway';

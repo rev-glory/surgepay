@@ -8,6 +8,8 @@
     "paths": {
       "@surgepay/common": ["../../packages/common/dist/index"],
       "@surgepay/common/*": ["../../packages/common/dist/*"],
+      "@surgepay/common-http": ["../../packages/common/http/dist/index"],
+      "@surgepay/common-http/*": ["../../packages/common/http/dist/*"],
       "@surgepay/config": ["../../packages/config/dist/index"],
       "@surgepay/config/*": ["../../packages/config/dist/*"],
       "@surgepay/contracts": ["../../packages/contracts/dist/index"],

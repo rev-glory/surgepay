@@ -3,7 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import * as crypto from 'crypto';
 
 import { setupE2EEnvironment, teardownE2EEnvironment, getRedisContainerInstance } from '../helpers/test-setup';
-import { clearDatabase, createTestMerchant } from '../helpers/db-helper';
+import { clearDatabase, createTestMerchant, createTestOrder } from '../helpers/db-helper';
 import { clearRedis } from '../helpers/redis-helper';
 import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
 
@@ -38,6 +38,15 @@ describe('API Gateway - E2E Redis Restart Recovery', () => {
 
     // 2. Perform a successful request
     const idempotencyKey1 = `idem_rec_1_${Date.now()}`;
+    const orderId1 = crypto.randomUUID();
+    await createTestOrder({
+      merchantId,
+      reference: orderId1,
+      amount: 100,
+      currency: 'USD',
+      status: 'CREATED',
+    });
+
     const response1 = await request(gatewayUrl)
       .post('/api/v1/payments')
       .set('x-api-key', MERCHANT_FIXTURES.active.apiKey)
@@ -47,7 +56,7 @@ describe('API Gateway - E2E Redis Restart Recovery', () => {
         amount: 100,
         currency: 'USD',
         merchantId,
-        orderId: crypto.randomUUID(),
+        orderId: orderId1,
         paymentMethod: 'card',
       });
     expect(response1.status).toBe(202);
@@ -81,6 +90,15 @@ describe('API Gateway - E2E Redis Restart Recovery', () => {
 
     // 5. Verify the Gateway processes new requests normally post-recovery
     const idempotencyKey2 = `idem_rec_2_${Date.now()}`;
+    const orderId2 = crypto.randomUUID();
+    await createTestOrder({
+      merchantId,
+      reference: orderId2,
+      amount: 200,
+      currency: 'USD',
+      status: 'CREATED',
+    });
+
     const response2 = await request(gatewayUrl)
       .post('/api/v1/payments')
       .set('x-api-key', MERCHANT_FIXTURES.active.apiKey)
@@ -90,7 +108,7 @@ describe('API Gateway - E2E Redis Restart Recovery', () => {
         amount: 200,
         currency: 'USD',
         merchantId,
-        orderId: crypto.randomUUID(),
+        orderId: orderId2,
         paymentMethod: 'card',
       });
     expect(response2.status).toBe(202);
