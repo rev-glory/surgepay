@@ -35,9 +35,9 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
     } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       let responseBody = exception.getResponse();
-      const anyException = exception as any;
-      if (anyException && typeof anyException === 'object' && 'responseData' in anyException && anyException.responseData) {
-        responseBody = anyException.responseData;
+      const objException = exception as unknown as Record<string, unknown>;
+      if (objException && typeof objException === 'object' && 'responseData' in objException && objException.responseData) {
+        responseBody = objException.responseData;
       }
       message = exception.message;
 
