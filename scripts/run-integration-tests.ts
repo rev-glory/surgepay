@@ -34,7 +34,8 @@ async function main() {
       .start();
     const pgPort = postgresContainer.getMappedPort(5432);
     const pgHost = postgresContainer.getHost();
-    const databaseUrl = `postgresql://surgepay_admin:surgepay_secure_pass@${pgHost}:${pgPort}/surgepay_test_db?sslmode=disable&schema=merchant`;
+    const baseDatabaseUrl = `postgresql://surgepay_admin:surgepay_secure_pass@${pgHost}:${pgPort}/surgepay_test_db?sslmode=disable`;
+    const databaseUrl = `${baseDatabaseUrl}&schema=merchant`;
     console.log(`✓ PostgreSQL container ready at ${databaseUrl}`);
 
     // Set environment variables for the current process and spawned child processes
@@ -45,9 +46,26 @@ async function main() {
 
     // 3. Execute Prisma DB Push
     console.log('🔨 Running Prisma schema push to test database...');
-    execSync('npx prisma db push --schema=apps/merchant-service/prisma/schema.prisma', {
+    execSync('npx prisma db push --schema=apps/merchant-service/prisma/schema.prisma --skip-generate', {
       stdio: 'inherit',
-      env: { ...process.env },
+      env: {
+        ...process.env,
+        DATABASE_URL: `${baseDatabaseUrl}&schema=merchant`,
+      },
+    });
+    execSync('npx prisma db push --schema=apps/payment-service/prisma/schema.prisma --skip-generate', {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        DATABASE_URL: `${baseDatabaseUrl}&schema=payment`,
+      },
+    });
+    execSync('npx prisma db push --schema=apps/order-service/src/prisma/order.prisma --skip-generate', {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        DATABASE_URL: `${baseDatabaseUrl}&schema=order`,
+      },
     });
     console.log('✓ Database schema synchronized successfully.');
 
