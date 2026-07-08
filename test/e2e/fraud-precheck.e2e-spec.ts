@@ -6,7 +6,7 @@ import { INestApplication } from '@nestjs/common';
 import * as crypto from 'crypto';
 
 import { setupE2EEnvironment, teardownE2EEnvironment } from '../helpers/test-setup';
-import { clearDatabase, createTestMerchant, createTestOrder, getPaymentCount } from '../helpers/db-helper';
+import { clearDatabase, createTestMerchant, createTestOrder, getPaymentCount, getOutboxCount, getOutboxEvents } from '../helpers/db-helper';
 import { clearRedis } from '../helpers/redis-helper';
 import { MERCHANT_FIXTURES } from '../fixtures/merchants.fixture';
 
@@ -35,7 +35,7 @@ describe('Fraud Pre-check & Risk Screening - E2E Integration Pipeline', () => {
     const idempotencyKey = `idem_fraud_low_${Date.now()}`;
     const orderId = crypto.randomUUID();
 
-    await createTestOrder({
+    const testOrder = await createTestOrder({
       merchantId,
       reference: orderId,
       amount: 5000,
@@ -64,8 +64,41 @@ describe('Fraud Pre-check & Risk Screening - E2E Integration Pipeline', () => {
       status: 'PENDING',
     });
 
+    const paymentId = response.body.paymentId;
+
+    // Verify Payment table has 1 row
     const count = await getPaymentCount(merchantId, orderId);
     expect(count).toBe(1);
+
+    // Verify OutboxEvent table has 1 row
+    const outboxCount = await getOutboxCount(paymentId);
+    expect(outboxCount).toBe(1);
+
+    // Verify OutboxEvent details
+    const outboxRecords = await getOutboxEvents(paymentId);
+    const outboxRecord = outboxRecords[0];
+    expect(outboxRecord).toBeDefined();
+    expect(outboxRecord.status).toBe('PENDING');
+    expect(outboxRecord.retryCount).toBe(0);
+    expect(outboxRecord.publishedAt).toBeNull();
+
+    // Verify complete event envelope
+    const envelope = outboxRecord.payload;
+    expect(envelope).toBeDefined();
+    expect(envelope.eventId).toBeDefined();
+    expect(envelope.eventType).toBe('PaymentInitiated');
+    expect(envelope.version).toBe(1);
+    expect(envelope.correlationId).toBeDefined();
+    expect(envelope.causationId).toBeDefined();
+    expect(envelope.timestamp).toBeDefined();
+    expect(envelope.payload).toEqual({
+      paymentId: paymentId,
+      amount: 5000,
+      currency: 'USD',
+      merchantId,
+      orderId: testOrder.id,
+      paymentMethod: 'card',
+    });
   });
 
   it('Scenario 2.1: High-risk payment -> amount threshold exceeded, rejected and returns 403 Forbidden with PAYMENT_BLOCKED', async () => {

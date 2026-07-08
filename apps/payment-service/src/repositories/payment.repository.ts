@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { PaymentEntity } from '../entities/payment.entity';
-import { Payment, PaymentStatus } from '../generated/client';
+import { Payment, PaymentStatus, Prisma } from '../generated/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -21,8 +21,9 @@ export class PaymentRepository {
     );
   }
 
-  async create(entity: PaymentEntity): Promise<PaymentEntity> {
-    const model = await this.prisma.client.payment.create({
+  async create(entity: PaymentEntity, tx?: Prisma.TransactionClient): Promise<PaymentEntity> {
+    const client = tx || this.prisma.client;
+    const model = await client.payment.create({
       data: {
         id: entity.id,
         merchantId: entity.merchantId,

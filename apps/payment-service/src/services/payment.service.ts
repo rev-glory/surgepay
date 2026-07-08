@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto';
+
 import {
   ConflictException,
   Injectable,
@@ -16,13 +18,18 @@ import {
 } from '@surgepay/common-http';
 
 import { CreatePaymentRequestDto } from '../dto/create-payment-request.dto';
+import { OutboxEventEntity } from '../entities/outbox-event.entity';
 import { PaymentEntity } from '../entities/payment.entity';
+import { PrismaService } from '../prisma/prisma.service';
+import { OutboxRepository } from '../repositories/outbox.repository';
 import { PaymentRepository } from '../repositories/payment.repository';
 
 @Injectable()
 export class PaymentService {
   constructor(
     private readonly paymentRepository: PaymentRepository,
+    private readonly outboxRepository: OutboxRepository,
+    private readonly prismaService: PrismaService,
     private readonly serviceClient: ServiceClient,
     private readonly requestContext: RequestContextService,
     private readonly logger: LoggerService,
@@ -226,7 +233,41 @@ export class PaymentService {
       reference: normalizedReference,
     });
 
-    const persisted = await this.paymentRepository.create(payment);
+    // Create the Event Envelope payload
+    const eventPayload = {
+      paymentId: payment.id,
+      amount: payment.amount,
+      currency: payment.currency,
+      merchantId: payment.merchantId,
+      orderId: orderId || '',
+      paymentMethod: body.paymentMethod || 'card',
+    };
+
+    // Construct the platform standard event envelope
+    const envelope = {
+      eventId: randomUUID(),
+      eventType: 'PaymentInitiated',
+      version: 1,
+      correlationId,
+      causationId: this.requestContext.requestId || correlationId,
+      sagaId: correlationId,
+      timestamp: new Date().toISOString(),
+      payload: eventPayload,
+    };
+
+    const outboxEvent = OutboxEventEntity.create({
+      aggregateId: payment.id,
+      aggregateType: 'Payment',
+      eventType: 'PaymentInitiated',
+      payload: envelope,
+    });
+
+    // Save both inside a single database transaction
+    const { persisted } = await this.prismaService.client.$transaction(async (tx) => {
+      const persisted = await this.paymentRepository.create(payment, tx);
+      await this.outboxRepository.save(outboxEvent, tx);
+      return { persisted };
+    });
 
     // Emit structured logs on success
     this.logger.info('Payment created successfully', {

@@ -22,6 +22,11 @@ export async function clearDatabase(): Promise<void> {
     // Ignore if table/schema is not pushed yet in other contexts
   }
   try {
+    await prisma.$executeRawUnsafe('TRUNCATE TABLE "payment"."OutboxEvent" CASCADE;');
+  } catch (err) {
+    // Ignore if table/schema is not pushed yet in other contexts
+  }
+  try {
     await prisma.$executeRawUnsafe('TRUNCATE TABLE "order"."Order" CASCADE;');
   } catch (err) {
     // Ignore if table/schema is not pushed yet in other contexts
@@ -29,7 +34,7 @@ export async function clearDatabase(): Promise<void> {
 }
 
 /**
- * Seeds a test merchant and associated API key.
+ * Seeding a test merchant and associated API key.
  */
 export async function createTestMerchant(options: {
   apiKey: string;
@@ -140,4 +145,28 @@ export async function getPaymentCount(merchantId: string, reference: string): Pr
     reference,
   );
   return Number(result[0]?.count ?? 0);
+}
+
+/**
+ * Seeding / verification helper to count outbox records in the database.
+ */
+export async function getOutboxCount(aggregateId: string): Promise<number> {
+  const prisma = getPrismaClient();
+  const result = await prisma.$queryRawUnsafe<{ count: any }[]>(
+    `SELECT COUNT(*) as count FROM "payment"."OutboxEvent" WHERE "aggregateId" = $1::uuid;`,
+    aggregateId,
+  );
+  return Number(result[0]?.count ?? 0);
+}
+
+/**
+ * Seeding / verification helper to get outbox records from the database.
+ */
+export async function getOutboxEvents(aggregateId: string): Promise<any[]> {
+  const prisma = getPrismaClient();
+  const result = await prisma.$queryRawUnsafe<any[]>(
+    `SELECT * FROM "payment"."OutboxEvent" WHERE "aggregateId" = $1::uuid;`,
+    aggregateId,
+  );
+  return result;
 }

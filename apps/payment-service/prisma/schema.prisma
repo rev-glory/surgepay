@@ -31,3 +31,26 @@ model Payment {
   @@index([createdAt])
   @@index([reference])
 }
+
+enum OutboxStatus {
+  PENDING
+  PUBLISHED
+  FAILED
+  RETRYING
+}
+
+model OutboxEvent {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  aggregateId   String       @db.Uuid
+  aggregateType String
+  eventType     String
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  createdAt     DateTime     @default(now()) @db.Timestamptz(6)
+  publishedAt   DateTime?    @db.Timestamptz(6)
+  retryCount    Int          @default(0)
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([eventType])
+}

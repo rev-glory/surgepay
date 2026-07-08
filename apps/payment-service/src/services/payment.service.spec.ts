@@ -13,16 +13,25 @@ import {
   ServiceUnavailableException as HttpServiceUnavailableException,
 } from '@surgepay/common-http';
 
+import type { OutboxEventEntity } from '../entities/outbox-event.entity';
 import { PaymentEntity } from '../entities/payment.entity';
+import { PrismaService } from '../prisma/prisma.service';
+import { OutboxRepository } from '../repositories/outbox.repository';
 import { PaymentRepository } from '../repositories/payment.repository';
 import { PaymentService } from './payment.service';
 
 describe('PaymentService', () => {
   let paymentService: PaymentService;
   let paymentRepository: jest.Mocked<PaymentRepository>;
+  let outboxRepository: jest.Mocked<OutboxRepository>;
   let mockOrderHttpClient: { post: jest.Mock };
   let mockFraudHttpClient: { post: jest.Mock };
   let mockRequestContext: jest.Mocked<RequestContextService>;
+  let mockPrismaService: {
+    client: {
+      $transaction: jest.Mock;
+    };
+  };
 
   beforeEach(async () => {
     // Setup Mock Repository
@@ -31,6 +40,18 @@ describe('PaymentService', () => {
       create: jest.fn(),
       findById: jest.fn(),
     } as unknown as jest.Mocked<PaymentRepository>;
+
+    outboxRepository = {
+      save: jest.fn(),
+    } as unknown as jest.Mocked<OutboxRepository>;
+
+    mockPrismaService = {
+      client: {
+        $transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => {
+          return cb({});
+        }),
+      },
+    };
 
     // Setup Mock Service Clients
     mockOrderHttpClient = {
@@ -63,6 +84,8 @@ describe('PaymentService', () => {
       providers: [
         PaymentService,
         { provide: PaymentRepository, useValue: paymentRepository },
+        { provide: OutboxRepository, useValue: outboxRepository },
+        { provide: PrismaService, useValue: mockPrismaService },
         { provide: ServiceClient, useValue: mockServiceClient },
         { provide: RequestContextService, useValue: mockRequestContext },
         { provide: LoggerService, useValue: mockLogger },
@@ -77,6 +100,7 @@ describe('PaymentService', () => {
     amount: 5000,
     currency: 'INR',
     reference: 'ORDER-1001',
+    paymentMethod: 'CREDIT_CARD',
   };
 
   it('should successfully persist payment after successful synchronous order validation and fraud precheck', async () => {
@@ -86,6 +110,7 @@ describe('PaymentService', () => {
     
     const mockPersisted = PaymentEntity.create({ ...mockPayload, merchantId: mockMerchantId });
     paymentRepository.create.mockResolvedValue(mockPersisted);
+    outboxRepository.save.mockResolvedValue({} as unknown as OutboxEventEntity);
 
     const result = await paymentService.createPayment(mockPayload, mockMerchantId);
 
@@ -111,6 +136,7 @@ describe('PaymentService', () => {
       { timeout: 2000 },
     );
     expect(paymentRepository.create).toHaveBeenCalled();
+    expect(outboxRepository.save).toHaveBeenCalled();
   });
 
   it('should fail-fast on duplicate reference and bypass order validation and persistence', async () => {
@@ -124,6 +150,7 @@ describe('PaymentService', () => {
     expect(mockOrderHttpClient.post).not.toHaveBeenCalled();
     expect(mockFraudHttpClient.post).not.toHaveBeenCalled();
     expect(paymentRepository.create).not.toHaveBeenCalled();
+    expect(outboxRepository.save).not.toHaveBeenCalled();
   });
 
   it('should map downstream 404 Not Found from Order Service to NotFoundException and bypass persistence', async () => {
@@ -141,6 +168,7 @@ describe('PaymentService', () => {
 
     expect(mockFraudHttpClient.post).not.toHaveBeenCalled();
     expect(paymentRepository.create).not.toHaveBeenCalled();
+    expect(outboxRepository.save).not.toHaveBeenCalled();
   });
 
   it('should throw PaymentBlockedError when fraud precheck rules reject request and bypass persistence', async () => {
@@ -153,6 +181,7 @@ describe('PaymentService', () => {
     ).rejects.toThrow(PaymentBlockedError);
 
     expect(paymentRepository.create).not.toHaveBeenCalled();
+    expect(outboxRepository.save).not.toHaveBeenCalled();
   });
 
   it('should map downstream 403 Forbidden from fraud precheck service to PaymentBlockedError and bypass persistence', async () => {
@@ -171,6 +200,7 @@ describe('PaymentService', () => {
     ).rejects.toThrow(PaymentBlockedError);
 
     expect(paymentRepository.create).not.toHaveBeenCalled();
+    expect(outboxRepository.save).not.toHaveBeenCalled();
   });
 
   it('should map HTTP timeout errors from fraud precheck to ServiceUnavailableException (503) and bypass persistence', async () => {
@@ -189,6 +219,7 @@ describe('PaymentService', () => {
     ).rejects.toThrow(ServiceUnavailableException);
 
     expect(paymentRepository.create).not.toHaveBeenCalled();
+    expect(outboxRepository.save).not.toHaveBeenCalled();
   });
 
   it('should map HTTP service unavailable errors from fraud precheck to ServiceUnavailableException (503) and bypass persistence', async () => {
@@ -207,6 +238,7 @@ describe('PaymentService', () => {
     ).rejects.toThrow(ServiceUnavailableException);
 
     expect(paymentRepository.create).not.toHaveBeenCalled();
+    expect(outboxRepository.save).not.toHaveBeenCalled();
   });
 
   it('should map other HTTP errors from fraud precheck to ServiceUnavailableException (503) and bypass persistence', async () => {
@@ -225,5 +257,6 @@ describe('PaymentService', () => {
     ).rejects.toThrow(ServiceUnavailableException);
 
     expect(paymentRepository.create).not.toHaveBeenCalled();
+    expect(outboxRepository.save).not.toHaveBeenCalled();
   });
 });
