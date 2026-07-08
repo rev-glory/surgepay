@@ -7,6 +7,7 @@ export enum PlatformErrorCode {
   INVALID_REQUEST = 'INVALID_REQUEST',
   VALIDATION_FAILED = 'VALIDATION_FAILED',
   INTERNAL_ERROR = 'INTERNAL_ERROR',
+  PAYMENT_BLOCKED = 'PAYMENT_BLOCKED',
 }
 
 export interface ValidationErrorDetail {

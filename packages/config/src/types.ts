@@ -56,6 +56,7 @@ export interface ServicesConfig {
   ledgerServiceUrl: string;
   balanceServiceUrl: string;
   notificationServiceUrl: string;
+  fraudServiceUrl: string;
   internalRequestTimeout: number;
   internalRequestRetries: number;
   internalRequestRetryDelay: number;

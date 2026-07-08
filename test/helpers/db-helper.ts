@@ -38,11 +38,13 @@ export async function createTestMerchant(options: {
   status?: string;
   permissions?: string[];
   webhookEnabled?: boolean;
+  merchantId?: string;
 }): Promise<{ id: string; merchantId: string }> {
   const prisma = getPrismaClient();
 
   const merchant = await prisma.merchant.create({
     data: {
+      merchantId: options.merchantId,
       name: options.name,
       email: options.email,
       status: options.status ?? 'ACTIVE',
@@ -125,4 +127,17 @@ export async function createTestOrder(options: {
     throw new Error('Failed to create test order in database.');
   }
   return firstResult;
+}
+
+/**
+ * Seeding / verification helper to count payment records in the database.
+ */
+export async function getPaymentCount(merchantId: string, reference: string): Promise<number> {
+  const prisma = getPrismaClient();
+  const result = await prisma.$queryRawUnsafe<{ count: any }[]>(
+    `SELECT COUNT(*) as count FROM "payment"."Payment" WHERE "merchantId" = $1::uuid AND reference = $2;`,
+    merchantId,
+    reference,
+  );
+  return Number(result[0]?.count ?? 0);
 }

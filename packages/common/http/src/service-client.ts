@@ -27,6 +27,9 @@ export class ServiceClient {
   
   public readonly notification: HttpClient;
   public readonly notificationService: HttpClient;
+  
+  public readonly fraud: HttpClient;
+  public readonly fraudService: HttpClient;
 
   constructor(
     private readonly configService: ConfigService,
@@ -75,6 +78,9 @@ export class ServiceClient {
 
     this.notification = buildClient(InternalService.NOTIFICATION);
     this.notificationService = this.notification;
+
+    this.fraud = buildClient(InternalService.FRAUD);
+    this.fraudService = this.fraud;
 
     this.logger.info('ServiceClient initialized successfully with all registered service endpoints.');
   }

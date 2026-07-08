@@ -10,6 +10,7 @@ import { AppModule as IdempotencyModule } from '../../apps/idempotency-service/s
 import { AppModule as MerchantModule } from '../../apps/merchant-service/src/app.module';
 import { AppModule as PaymentModule } from '../../apps/payment-service/src/app.module';
 import { AppModule as OrderModule } from '../../apps/order-service/src/app.module';
+import { AppModule as FraudModule } from '../../apps/fraud-service/src/app.module';
 
 import {
   AppValidationPipe,
@@ -26,6 +27,7 @@ let merchantApp: INestApplication | null = null;
 let idempotencyApp: INestApplication | null = null;
 let paymentApp: INestApplication | null = null;
 let orderApp: INestApplication | null = null;
+let fraudApp: INestApplication | null = null;
 
 let redisClient: Redis | null = null;
 let prismaClient: PrismaClient | null = null;
@@ -130,6 +132,7 @@ export async function setupE2EEnvironment() {
   // Set default service names for health check mapping
   process.env.NODE_ENV = 'test';
   process.env.REDIS_PASSWORD = '';
+  process.env.INTERNAL_REQUEST_TIMEOUT = '5000';
 
   // 4. Boot Merchant Service
   process.env.SERVICE_NAME = 'merchant-service';
@@ -211,6 +214,30 @@ export async function setupE2EEnvironment() {
   const orderPort = (orderApp.getHttpServer().address() as AddressInfo).port;
   process.env.ORDER_SERVICE_URL = `http://127.0.0.1:${orderPort}`;
 
+  // 6.5. Boot Fraud Service
+  process.env.SERVICE_NAME = 'fraud-service';
+  const fraudModuleFixture: TestingModule = await Test.createTestingModule({
+    imports: [FraudModule],
+  }).compile();
+  fraudApp = fraudModuleFixture.createNestApplication();
+  fraudApp.setGlobalPrefix('api', {
+    exclude: [
+      { path: 'health', method: RequestMethod.ALL },
+      { path: 'health/live', method: RequestMethod.ALL },
+      { path: 'health/ready', method: RequestMethod.ALL },
+    ],
+  });
+  fraudApp.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: '1',
+  });
+  const fraudLogger = await fraudApp.resolve(LoggerService);
+  fraudApp.useGlobalFilters(new ExceptionLoggingFilter(fraudLogger));
+  fraudApp.useGlobalInterceptors(new LoggingInterceptor(fraudLogger));
+  await fraudApp.listen(0);
+  const fraudPort = (fraudApp.getHttpServer().address() as AddressInfo).port;
+  process.env.FRAUD_SERVICE_URL = `http://127.0.0.1:${fraudPort}`;
+
   // 7. Boot Payment Service
   process.env.SERVICE_NAME = 'payment-service';
   const paymentModuleFixture: TestingModule = await Test.createTestingModule({
@@ -257,6 +284,7 @@ export async function setupE2EEnvironment() {
     idempotencyApp,
     paymentApp,
     orderApp,
+    fraudApp,
   };
 }
 
@@ -280,6 +308,10 @@ export async function teardownE2EEnvironment() {
   if (orderApp) {
     await orderApp.close();
     orderApp = null;
+  }
+  if (fraudApp) {
+    await fraudApp.close();
+    fraudApp = null;
   }
   if (redisClient) {
     redisClient.disconnect();

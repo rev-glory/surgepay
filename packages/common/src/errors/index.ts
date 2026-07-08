@@ -41,6 +41,11 @@ export class ForbiddenError extends BaseError {
   readonly code = PlatformErrorCode.MERCHANT_DISABLED;
 }
 
+export class PaymentBlockedError extends BaseError {
+  readonly statusCode = 403;
+  readonly code = PlatformErrorCode.PAYMENT_BLOCKED;
+}
+
 export class InternalServerError extends BaseError {
   readonly statusCode = 500;
   readonly code = PlatformErrorCode.INTERNAL_ERROR;

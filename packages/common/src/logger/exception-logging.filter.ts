@@ -34,14 +34,22 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
       }
     } else if (exception instanceof HttpException) {
       status = exception.getStatus();
-      const responseBody = exception.getResponse();
+      let responseBody = exception.getResponse();
+      const anyException = exception as any;
+      if (anyException && typeof anyException === 'object' && 'responseData' in anyException && anyException.responseData) {
+        responseBody = anyException.responseData;
+      }
       message = exception.message;
 
       if (typeof responseBody === 'object' && responseBody !== null) {
         const bodyObj = responseBody as Record<string, unknown>;
         
-        // Extract error code from HttpException payload
-        const rawError = bodyObj.error || bodyObj.code;
+        // Extract error code from HttpException payload, checking nested structure
+        let rawError = bodyObj.error || bodyObj.code;
+        if (rawError && typeof rawError === 'object') {
+          rawError = (rawError as Record<string, unknown>).code;
+        }
+
         if (typeof rawError === 'string' && Object.values(PlatformErrorCode).includes(rawError as PlatformErrorCode)) {
           code = rawError as PlatformErrorCode;
         } else if (typeof bodyObj.message === 'string' && Object.values(PlatformErrorCode).includes(bodyObj.message as PlatformErrorCode)) {
@@ -61,10 +69,18 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
           }
         }
 
-        if (typeof bodyObj.message === 'string') {
-          message = bodyObj.message;
-        } else if (Array.isArray(bodyObj.message)) {
-          message = bodyObj.message.join(', ');
+        let extractedMessage = bodyObj.message;
+        if (bodyObj.error && typeof bodyObj.error === 'object') {
+          const errObj = bodyObj.error as Record<string, unknown>;
+          if (typeof errObj.message === 'string') {
+            extractedMessage = errObj.message;
+          }
+        }
+
+        if (typeof extractedMessage === 'string') {
+          message = extractedMessage;
+        } else if (Array.isArray(extractedMessage)) {
+          message = extractedMessage.join(', ');
         }
         
         if (bodyObj.validationErrors && Array.isArray(bodyObj.validationErrors)) {

@@ -7,7 +7,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 
-import { LoggerService, RequestContextService } from '@surgepay/common';
+import { LoggerService, PaymentBlockedError, RequestContextService } from '@surgepay/common';
 import {
   DownstreamResponseException,
   RequestTimeoutException,
@@ -125,7 +125,100 @@ export class PaymentService {
       validationResult,
     });
 
-    // 4. Persist via repository after successful order validation
+    // 3b. Synchronous Fraud Pre-check
+    this.logger.info('Initiating synchronous fraud precheck', {
+      correlationId,
+      merchantId,
+      reference: normalizedReference,
+    });
+
+    const fraudStartTime = Date.now();
+    let fraudDecision = 'APPROVED';
+    let riskScore = 0;
+
+    try {
+      const response = await this.serviceClient.fraudService.post<{
+        approved: boolean;
+        riskScore: number;
+        reason?: string;
+      }>(
+        '/api/v1/internal/fraud/precheck',
+        {
+          merchantId,
+          amount: body.amount,
+          currency: body.currency,
+        },
+        {
+          timeout: 2000, // strictly 2-second timeout
+        },
+      );
+
+      riskScore = response.riskScore;
+
+      if (!response.approved) {
+        fraudDecision = 'REJECTED';
+        const evalDuration = Date.now() - fraudStartTime;
+        this.logger.warn('Payment rejected by fraud rules', {
+          correlationId,
+          merchantId,
+          reference: normalizedReference,
+          riskScore,
+          decision: fraudDecision,
+          ruleTriggered: response.reason,
+          durationMs: evalDuration,
+        });
+        throw new PaymentBlockedError('Payment rejected by fraud rules');
+      }
+    } catch (error: unknown) {
+      const evalDuration = Date.now() - fraudStartTime;
+      let mappedError: Error;
+
+      if (error instanceof PaymentBlockedError) {
+        throw error;
+      }
+
+      if (error instanceof RequestTimeoutException) {
+        fraudDecision = 'TIMEOUT';
+        mappedError = new ServiceUnavailableException('Fraud pre-check service timed out.');
+      } else if (error instanceof HttpServiceUnavailableException) {
+        fraudDecision = 'SERVICE_UNAVAILABLE';
+        mappedError = new ServiceUnavailableException('Fraud pre-check service is unavailable.');
+      } else if (error instanceof DownstreamResponseException) {
+        const status = error.getStatus();
+        fraudDecision = `DOWNSTREAM_ERROR_${status}`;
+
+        if (status === 403) {
+          mappedError = new PaymentBlockedError('Payment rejected by fraud rules');
+        } else {
+          mappedError = new ServiceUnavailableException('Fraud pre-check service is unavailable.');
+        }
+      } else {
+        fraudDecision = 'UNEXPECTED_ERROR';
+        mappedError = new ServiceUnavailableException('Fraud pre-check service encountered an unexpected error.');
+      }
+
+      this.logger.error('Fraud precheck failed', error, {
+        correlationId,
+        merchantId,
+        reference: normalizedReference,
+        durationMs: evalDuration,
+        fraudDecision,
+      });
+
+      throw mappedError;
+    }
+
+    const evalDuration = Date.now() - fraudStartTime;
+    this.logger.info('Fraud pre-check passed', {
+      correlationId,
+      merchantId,
+      reference: normalizedReference,
+      riskScore,
+      durationMs: evalDuration,
+      fraudDecision,
+    });
+
+    // 4. Persist via repository after successful order validation and fraud precheck
     const payment = PaymentEntity.create({
       merchantId,
       amount: body.amount,

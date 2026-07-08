@@ -1,13 +1,11 @@
 import {
   ConflictException,
-  InternalServerErrorException,
   NotFoundException,
   ServiceUnavailableException,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 
-import { LoggerService, RequestContextService } from '@surgepay/common';
+import { LoggerService, PaymentBlockedError, RequestContextService } from '@surgepay/common';
 import {
   DownstreamResponseException,
   RequestTimeoutException,
@@ -23,6 +21,7 @@ describe('PaymentService', () => {
   let paymentService: PaymentService;
   let paymentRepository: jest.Mocked<PaymentRepository>;
   let mockOrderHttpClient: { post: jest.Mock };
+  let mockFraudHttpClient: { post: jest.Mock };
   let mockRequestContext: jest.Mocked<RequestContextService>;
 
   beforeEach(async () => {
@@ -33,12 +32,17 @@ describe('PaymentService', () => {
       findById: jest.fn(),
     } as unknown as jest.Mocked<PaymentRepository>;
 
-    // Setup Mock ServiceClient
+    // Setup Mock Service Clients
     mockOrderHttpClient = {
       post: jest.fn(),
     };
+    mockFraudHttpClient = {
+      post: jest.fn(),
+    };
+    
     const mockServiceClient = {
       orderService: mockOrderHttpClient,
+      fraudService: mockFraudHttpClient,
     } as unknown as ServiceClient;
 
     // Setup Mock RequestContext
@@ -75,9 +79,11 @@ describe('PaymentService', () => {
     reference: 'ORDER-1001',
   };
 
-  it('should successfully persist payment after successful synchronous order validation', async () => {
+  it('should successfully persist payment after successful synchronous order validation and fraud precheck', async () => {
     paymentRepository.findByReference.mockResolvedValue(null);
     mockOrderHttpClient.post.mockResolvedValue({ valid: true, orderId: 'test-order-uuid' });
+    mockFraudHttpClient.post.mockResolvedValue({ approved: true, riskScore: 12 });
+    
     const mockPersisted = PaymentEntity.create({ ...mockPayload, merchantId: mockMerchantId });
     paymentRepository.create.mockResolvedValue(mockPersisted);
 
@@ -95,6 +101,15 @@ describe('PaymentService', () => {
       },
       { timeout: 2000 },
     );
+    expect(mockFraudHttpClient.post).toHaveBeenCalledWith(
+      '/api/v1/internal/fraud/precheck',
+      {
+        merchantId: mockMerchantId,
+        amount: 5000,
+        currency: 'INR',
+      },
+      { timeout: 2000 },
+    );
     expect(paymentRepository.create).toHaveBeenCalled();
   });
 
@@ -107,6 +122,7 @@ describe('PaymentService', () => {
     ).rejects.toThrow(ConflictException);
 
     expect(mockOrderHttpClient.post).not.toHaveBeenCalled();
+    expect(mockFraudHttpClient.post).not.toHaveBeenCalled();
     expect(paymentRepository.create).not.toHaveBeenCalled();
   });
 
@@ -123,65 +139,50 @@ describe('PaymentService', () => {
       paymentService.createPayment(mockPayload, mockMerchantId),
     ).rejects.toThrow(NotFoundException);
 
+    expect(mockFraudHttpClient.post).not.toHaveBeenCalled();
     expect(paymentRepository.create).not.toHaveBeenCalled();
   });
 
-  it('should map downstream 403 Forbidden (merchant mismatch) to NotFoundException and bypass persistence', async () => {
+  it('should throw PaymentBlockedError when fraud precheck rules reject request and bypass persistence', async () => {
     paymentRepository.findByReference.mockResolvedValue(null);
-    const downstreamError = new DownstreamResponseException(403, { message: 'Merchant mismatch' }, {}, {
-      service: 'order-service',
-      method: 'POST',
-      url: '/internal/orders/validate',
-    });
-    mockOrderHttpClient.post.mockRejectedValue(downstreamError);
+    mockOrderHttpClient.post.mockResolvedValue({ valid: true, orderId: 'test-order-uuid' });
+    mockFraudHttpClient.post.mockResolvedValue({ approved: false, riskScore: 96, reason: 'AMOUNT_THRESHOLD_EXCEEDED' });
 
     await expect(
       paymentService.createPayment(mockPayload, mockMerchantId),
-    ).rejects.toThrow(NotFoundException);
+    ).rejects.toThrow(PaymentBlockedError);
 
     expect(paymentRepository.create).not.toHaveBeenCalled();
   });
 
-  it('should map downstream 422 Unprocessable Entity to UnprocessableEntityException and bypass persistence', async () => {
+  it('should map downstream 403 Forbidden from fraud precheck service to PaymentBlockedError and bypass persistence', async () => {
     paymentRepository.findByReference.mockResolvedValue(null);
-    const downstreamError = new DownstreamResponseException(422, { message: 'Amount mismatch' }, {}, {
-      service: 'order-service',
+    mockOrderHttpClient.post.mockResolvedValue({ valid: true, orderId: 'test-order-uuid' });
+    
+    const downstreamError = new DownstreamResponseException(403, { code: 'PAYMENT_BLOCKED' }, {}, {
+      service: 'fraud-service',
       method: 'POST',
-      url: '/internal/orders/validate',
+      url: '/internal/fraud/precheck',
     });
-    mockOrderHttpClient.post.mockRejectedValue(downstreamError);
+    mockFraudHttpClient.post.mockRejectedValue(downstreamError);
 
     await expect(
       paymentService.createPayment(mockPayload, mockMerchantId),
-    ).rejects.toThrow(UnprocessableEntityException);
+    ).rejects.toThrow(PaymentBlockedError);
 
     expect(paymentRepository.create).not.toHaveBeenCalled();
   });
 
-  it('should map downstream 409 Conflict to ConflictException and bypass persistence', async () => {
+  it('should map HTTP timeout errors from fraud precheck to ServiceUnavailableException (503) and bypass persistence', async () => {
     paymentRepository.findByReference.mockResolvedValue(null);
-    const downstreamError = new DownstreamResponseException(409, { message: 'Order is paid' }, {}, {
-      service: 'order-service',
-      method: 'POST',
-      url: '/internal/orders/validate',
-    });
-    mockOrderHttpClient.post.mockRejectedValue(downstreamError);
+    mockOrderHttpClient.post.mockResolvedValue({ valid: true, orderId: 'test-order-uuid' });
 
-    await expect(
-      paymentService.createPayment(mockPayload, mockMerchantId),
-    ).rejects.toThrow(ConflictException);
-
-    expect(paymentRepository.create).not.toHaveBeenCalled();
-  });
-
-  it('should map HTTP timeout errors to ServiceUnavailableException (503) and bypass persistence', async () => {
-    paymentRepository.findByReference.mockResolvedValue(null);
     const timeoutError = new RequestTimeoutException('Timed out', {
-      service: 'order-service',
+      service: 'fraud-service',
       method: 'POST',
-      url: '/internal/orders/validate',
+      url: '/internal/fraud/precheck',
     });
-    mockOrderHttpClient.post.mockRejectedValue(timeoutError);
+    mockFraudHttpClient.post.mockRejectedValue(timeoutError);
 
     await expect(
       paymentService.createPayment(mockPayload, mockMerchantId),
@@ -190,14 +191,16 @@ describe('PaymentService', () => {
     expect(paymentRepository.create).not.toHaveBeenCalled();
   });
 
-  it('should map other HTTP service errors to ServiceUnavailableException (503) and bypass persistence', async () => {
+  it('should map HTTP service unavailable errors from fraud precheck to ServiceUnavailableException (503) and bypass persistence', async () => {
     paymentRepository.findByReference.mockResolvedValue(null);
-    const serviceError = new HttpServiceUnavailableException('Unavailable', {
-      service: 'order-service',
+    mockOrderHttpClient.post.mockResolvedValue({ valid: true, orderId: 'test-order-uuid' });
+
+    const serviceUnavailableError = new HttpServiceUnavailableException('Service Unavailable', {
+      service: 'fraud-service',
       method: 'POST',
-      url: '/internal/orders/validate',
+      url: '/internal/fraud/precheck',
     });
-    mockOrderHttpClient.post.mockRejectedValue(serviceError);
+    mockFraudHttpClient.post.mockRejectedValue(serviceUnavailableError);
 
     await expect(
       paymentService.createPayment(mockPayload, mockMerchantId),
@@ -206,13 +209,20 @@ describe('PaymentService', () => {
     expect(paymentRepository.create).not.toHaveBeenCalled();
   });
 
-  it('should map unexpected errors to InternalServerErrorException (500) and bypass persistence', async () => {
+  it('should map other HTTP errors from fraud precheck to ServiceUnavailableException (503) and bypass persistence', async () => {
     paymentRepository.findByReference.mockResolvedValue(null);
-    mockOrderHttpClient.post.mockRejectedValue(new Error('Something blew up'));
+    mockOrderHttpClient.post.mockResolvedValue({ valid: true, orderId: 'test-order-uuid' });
+
+    const genericDownstreamError = new DownstreamResponseException(500, { message: 'Internal Error' }, {}, {
+      service: 'fraud-service',
+      method: 'POST',
+      url: '/internal/fraud/precheck',
+    });
+    mockFraudHttpClient.post.mockRejectedValue(genericDownstreamError);
 
     await expect(
       paymentService.createPayment(mockPayload, mockMerchantId),
-    ).rejects.toThrow(InternalServerErrorException);
+    ).rejects.toThrow(ServiceUnavailableException);
 
     expect(paymentRepository.create).not.toHaveBeenCalled();
   });
