@@ -1,5 +1,6 @@
 import { execSync } from 'child_process';
 import { GenericContainer, StartedTestContainer } from 'testcontainers';
+import { RedpandaTestContainer } from '../test/testcontainers/redpanda.container';
 
 async function main() {
   console.log('======================================================');
@@ -38,18 +39,36 @@ async function main() {
     // Set environment variables for the current process and spawned child processes
     process.env.DATABASE_URL = databaseUrl;
     process.env.REDIS_URL = redisUrl;
+    process.env.KAFKA_BROKERS = '127.0.0.1:19092';
     process.env.NODE_ENV = 'test';
     process.env.REDIS_PASSWORD = '';
 
-    // 3. Execute Prisma DB Push
-    console.log('🔨 Running Prisma schema push to test database...');
+    // 4. Execute Prisma DB Push for each schema
+    console.log('🔨 Running Prisma schema pushes to test database...');
+    
+    console.log('Syncing Merchant schema...');
     execSync('npx prisma db push --schema=apps/merchant-service/prisma/schema.prisma', {
       stdio: 'inherit',
-      env: { ...process.env },
+      env: { ...process.env, DATABASE_URL: databaseUrl },
     });
-    console.log('✓ Database schema synchronized successfully.');
 
-    // 4. Run Jest Integration Tests
+    console.log('Syncing Payment/Outbox schema...');
+    const paymentDatabaseUrl = databaseUrl.replace('schema=merchant', 'schema=payment');
+    execSync('npx prisma db push --schema=apps/payment-service/src/generated/client/schema.prisma', {
+      stdio: 'inherit',
+      env: { ...process.env, DATABASE_URL: paymentDatabaseUrl },
+    });
+
+    console.log('Syncing Ledger/Inbox schema...');
+    const ledgerDatabaseUrl = databaseUrl.replace('schema=merchant', 'schema=ledger');
+    execSync('npx prisma db push --schema=packages/database/generated/ledger/schema.prisma', {
+      stdio: 'inherit',
+      env: { ...process.env, DATABASE_URL: ledgerDatabaseUrl },
+    });
+
+    console.log('✓ Database schemas synchronized successfully.');
+
+    // 5. Run Jest Integration Tests
     console.log('🧪 Running integration test suite...');
     execSync('npx jest --config jest.integration.config.js --runInBand --forceExit', {
       stdio: 'inherit',
