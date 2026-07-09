@@ -1,5 +1,5 @@
 import type * as constants from './constants';
-import type { BaseEventEnvelope } from './envelope';
+import type { BaseEventEnvelope } from './EventEnvelope';
 
 // --- PAYMENT LIFECYCLE PAYLOADS & EVENTS ---
 

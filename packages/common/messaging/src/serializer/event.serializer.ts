@@ -1,15 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { BaseEventEnvelope } from '@surgepay/events';
+import { BaseEventEnvelope, EventSerializer as SharedSerializer } from '@surgepay/events';
 
 import { Serializer } from './serializer.interface';
 
 @Injectable()
 export class EventSerializer implements Serializer {
+  private readonly sharedSerializer = new SharedSerializer();
+
   serialize<T = any>(envelope: BaseEventEnvelope<T>): Buffer {
-    return Buffer.from(JSON.stringify(envelope));
+    return this.sharedSerializer.serialize(envelope);
   }
 
   deserialize<T = any>(data: Buffer): BaseEventEnvelope<T> {
-    return JSON.parse(data.toString()) as BaseEventEnvelope<T>;
+    return this.sharedSerializer.deserialize(data);
   }
 }
