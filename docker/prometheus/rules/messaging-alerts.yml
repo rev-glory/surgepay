@@ -1,0 +1,65 @@
+groups:
+  - name: surgepay-messaging-alerts
+    rules:
+      - alert: SurgePayOutboxBacklog
+        expr: sum(pending_events) by (service) > 100
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High Outbox Pending backlog detected"
+          description: "Outbox pending events for service {{ $labels.service }} is {{ $value }}, which exceeds the threshold of 100."
+
+      - alert: SurgePayPublishFailureRate
+        expr: sum(rate(publish_failures_total[5m])) / sum(rate(events_published_total[5m])) * 100 > 5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High Kafka publish failure rate"
+          description: "Kafka publish failure rate is {{ $value }}%, exceeding threshold of 5%."
+
+      - alert: SurgePayConsumerLag
+        expr: sum(kafka_consumergroup_lag) by (consumergroup, topic) > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Consumer Lag detected"
+          description: "Consumer group {{ $labels.consumergroup }} lag on topic {{ $labels.topic }} is {{ $value }}, exceeding 1000 messages."
+
+      - alert: SurgePayDLQGrowth
+        expr: sum(rate(dlq_events[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dead Letter Queue growth detected"
+          description: "Events are entering the DLQ for consumer group at rate of {{ $value }}/s."
+
+      - alert: SurgePayRetryStorm
+        expr: sum(rate(retry_total[5m])) > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Retry storm detected"
+          description: "High retry activity detected on topic publishing at rate of {{ $value }}/s."
+
+      - alert: SurgePayHighPublishLatency
+        expr: sum(rate(publish_duration_ms_sum[5m])) / sum(rate(publish_duration_ms_count[5m])) > 200
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Publish Latency detected"
+          description: "Average publish duration to Kafka is {{ $value }}ms, exceeding 200ms threshold."
+
+      - alert: SurgePayRelayStalled
+        expr: (sum(pending_events) by (service) > 0) and (sum(rate(events_published_total[5m])) by (service) == 0)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Outbox Relay stalled"
+          description: "Outbox relay for service {{ $labels.service }} has pending work but has published 0 events in the last 5 minutes."
