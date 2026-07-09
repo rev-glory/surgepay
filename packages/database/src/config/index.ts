@@ -30,7 +30,7 @@ export function buildDatabaseUrl(
     if (config.socketTimeout !== undefined && !url.searchParams.has('socket_timeout')) {
       url.searchParams.set('socket_timeout', config.socketTimeout.toString());
     }
-    if (config.schema !== undefined && !url.searchParams.has('schema')) {
+    if (config.schema !== undefined) {
       url.searchParams.set('schema', config.schema);
     }
 

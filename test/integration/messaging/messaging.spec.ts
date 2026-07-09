@@ -480,6 +480,7 @@ describe('Messaging System Integration', () => {
     });
 
     // 1. Stop Redpanda container to simulate broker failure
+    await producerService.disconnect();
     await redpandaContainer.stop();
 
     // 2. Poll Outbox Relay: publish should fail
@@ -497,10 +498,10 @@ describe('Messaging System Integration', () => {
     const brokers = await redpandaContainer.start();
     process.env.KAFKA_BROKERS = brokers;
 
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    await new Promise((resolve) => setTimeout(resolve, 10000));
 
-    // Reinitialize producer connection
-    await producerService.onModuleInit();
+    // Reconnect producer
+    await producerService.connect();
 
     // 4. Poll Outbox Relay again: should now succeed
     await relayService.runOnce();

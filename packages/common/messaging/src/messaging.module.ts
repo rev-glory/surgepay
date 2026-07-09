@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { LoggerModule } from '@surgepay/common';
+import { LoggerModule, MetricsModule } from '@surgepay/common';
 import { ConfigModule, ConfigService } from '@surgepay/config';
 
 import { EVENT_SERIALIZER, KAFKA_PRODUCER, KAFKA_PRODUCER_OPTIONS } from './kafka.tokens';
@@ -12,7 +12,7 @@ import { EventSerializer } from './serializer/event.serializer';
 import { KafkaDlqPublisher } from './consumer/dlq.publisher';
 
 @Module({
-  imports: [ConfigModule, LoggerModule],
+  imports: [ConfigModule, LoggerModule, MetricsModule],
   providers: [
     {
       provide: EVENT_SERIALIZER,

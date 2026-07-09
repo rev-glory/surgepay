@@ -18,11 +18,15 @@ async function getFreePort(): Promise<number> {
 
 export class RedpandaTestContainer {
   private container: StartedTestContainer | null = null;
+  private port: number | null = null;
 
   async start(): Promise<string> {
-    const freePort = await getFreePort();
+    if (this.port === null) {
+      this.port = await getFreePort();
+    }
+    const hostPort = this.port;
     this.container = await new GenericContainer('docker.redpanda.com/redpandadata/redpanda:v23.3.10')
-      .withExposedPorts({ container: 9092, host: freePort })
+      .withExposedPorts({ container: 9092, host: hostPort })
       .withCommand([
         'redpanda',
         'start',
@@ -31,11 +35,11 @@ export class RedpandaTestContainer {
         '--kafka-addr',
         'PLAINTEXT://0.0.0.0:9092',
         '--advertise-kafka-addr',
-        `PLAINTEXT://127.0.0.1:${freePort}`,
+        `PLAINTEXT://127.0.0.1:${hostPort}`,
       ])
       .start();
 
-    return `127.0.0.1:${freePort}`;
+    return `127.0.0.1:${hostPort}`;
   }
 
   async stop(): Promise<void> {
