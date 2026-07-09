@@ -10,7 +10,7 @@ export class InboxService {
    * Manually persists an incoming event envelope to the database.
    */
   async handleIncomingEvent(envelope: EventEnvelope): Promise<void> {
-    await this.repository.persist(envelope);
+    await this.repository.persistReceived(envelope);
   }
 
   /**

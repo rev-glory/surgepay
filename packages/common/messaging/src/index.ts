@@ -7,5 +7,7 @@ export * from './producer/producer.interface';
 export * from './producer/producer.options';
 export * from './producer/kafka.producer';
 export * from './producer/producer.service';
+export * from './consumer/duplicate-event.exception';
+export * from './consumer/event-handler.interface';
 export * from './consumer/kafka-consumer';
 export * from './messaging.module';

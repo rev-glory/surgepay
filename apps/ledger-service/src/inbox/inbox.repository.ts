@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { EventEnvelope } from '@surgepay/events';
-import { InboxPersister } from '@surgepay/common-messaging';
+import { EventEnvelope, InboxEvent } from '@surgepay/events';
+import { InboxPersister, DuplicateEventException } from '@surgepay/common-messaging';
+import { Prisma } from '@surgepay/database/generated/ledger';
 import { PrismaService } from '../prisma.service';
 
 @Injectable()
@@ -8,23 +9,46 @@ export class InboxRepository implements InboxPersister {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Persists a received event envelope into the Inbox database schema.
+   * Finds an existing inbox event record matching the consumer group and event ID.
    */
-  async persist(envelope: EventEnvelope): Promise<void> {
-    await this.prisma.client.inboxEvent.create({
-      data: {
-        eventId: envelope.eventId,
-        consumer: 'ledger-service',
-        eventType: envelope.eventType,
-        status: 'RECEIVED',
-        payload: envelope.payload as any,
-        correlationId: envelope.correlationId,
-        causationId: envelope.causationId,
-        sagaId: envelope.sagaId ?? null,
-        receivedAt: new Date(),
-        retryCount: 0,
+  async find(consumer: string, eventId: string): Promise<InboxEvent | null> {
+    const record = await this.prisma.client.inboxEvent.findUnique({
+      where: {
+        consumer_eventId: {
+          consumer,
+          eventId,
+        },
       },
     });
+    return record as InboxEvent | null;
+  }
+
+  /**
+   * Persists a received event envelope into the Inbox database schema.
+   */
+  async persistReceived(envelope: EventEnvelope): Promise<InboxEvent> {
+    try {
+      const record = await this.prisma.client.inboxEvent.create({
+        data: {
+          eventId: envelope.eventId,
+          consumer: 'ledger-service',
+          eventType: envelope.eventType,
+          status: 'RECEIVED',
+          payload: envelope.payload as any,
+          correlationId: envelope.correlationId,
+          causationId: envelope.causationId,
+          sagaId: envelope.sagaId ?? null,
+          receivedAt: new Date(),
+          retryCount: 0,
+        },
+      });
+      return record as InboxEvent;
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new DuplicateEventException(envelope.eventId, 'ledger-service');
+      }
+      throw err;
+    }
   }
 
   /**
@@ -82,18 +106,10 @@ export class InboxRepository implements InboxPersister {
   /**
    * Find an inbox event by ID.
    */
-  async findById(id: string) {
-    return this.prisma.client.inboxEvent.findUnique({
+  async findById(id: string): Promise<InboxEvent | null> {
+    const record = await this.prisma.client.inboxEvent.findUnique({
       where: { id },
     });
-  }
-
-  /**
-   * Find an inbox event by event ID.
-   */
-  async findByEventId(eventId: string) {
-    return this.prisma.client.inboxEvent.findFirst({
-      where: { eventId },
-    });
+    return record as InboxEvent | null;
   }
 }
