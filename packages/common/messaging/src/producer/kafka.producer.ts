@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { LoggerService, MetricsService } from '@surgepay/common';
 import { BaseEventEnvelope } from '@surgepay/events';
 import { CompressionTypes, Producer, RecordMetadata } from 'kafkajs';
+import { context, propagation, trace, SpanKind, SpanStatusCode } from '@opentelemetry/api';
 
 import { EVENT_SERIALIZER, KAFKA_PRODUCER } from '../kafka.tokens';
 import { Serializer } from '../serializer/serializer.interface';
@@ -48,55 +49,78 @@ export class KafkaProducer implements IProducer {
     const value = this.serializer.serialize(event);
     const startTime = Date.now();
 
-    try {
-      this.logger.debug('Publishing message to Kafka', {
-        topic,
-        eventId: event.eventId,
-        eventType: event.eventType,
-        correlationId: event.correlationId,
-      });
+    const tracer = trace.getTracer('@surgepay/common-messaging');
+    const span = tracer.startSpan(`${topic} publish`, {
+      kind: SpanKind.PRODUCER,
+      attributes: {
+        'messaging.system': 'kafka',
+        'messaging.destination.name': topic,
+        'messaging.operation': 'publish',
+        'messaging.kafka.client_id': event.producer,
+      },
+    });
 
-      const metadata = await this.rawProducer.send({
-        topic,
-        acks: -1, // all acknowledgements
-        compression: CompressionTypes.GZIP,
-        messages: [
-          {
-            key: event.eventId,
-            value,
-            headers: {
-              correlationId: event.correlationId,
-              causationId: event.causationId,
+    return context.with(trace.setSpan(context.active(), span), async () => {
+      try {
+        this.logger.debug('Publishing message to Kafka', {
+          topic,
+          eventId: event.eventId,
+          eventType: event.eventType,
+          correlationId: event.correlationId,
+        });
+
+        const otelHeaders: Record<string, string> = {};
+        propagation.inject(context.active(), otelHeaders);
+
+        const metadata = await this.rawProducer.send({
+          topic,
+          acks: -1, // all acknowledgements
+          compression: CompressionTypes.GZIP,
+          messages: [
+            {
+              key: event.eventId,
+              value,
+              headers: {
+                correlationId: event.correlationId,
+                causationId: event.causationId,
+                requestId: event.requestId,
+                ...otelHeaders,
+              },
             },
-          },
-        ],
-      });
+          ],
+        });
 
-      const duration = Date.now() - startTime;
-      this.metrics.incrementPublished(event.producer, event.eventType);
-      this.metrics.recordPublishDuration(event.producer, event.eventType, duration);
+        const duration = Date.now() - startTime;
+        this.metrics.incrementPublished(event.producer, event.eventType);
+        this.metrics.recordPublishDuration(event.producer, event.eventType, duration);
 
-      this.logger.info('Successfully published message to Kafka', {
-        topic,
-        eventId: event.eventId,
-        eventType: event.eventType,
-        correlationId: event.correlationId,
-        durationMs: duration,
-      });
+        this.logger.info('Successfully published message to Kafka', {
+          topic,
+          eventId: event.eventId,
+          eventType: event.eventType,
+          correlationId: event.correlationId,
+          durationMs: duration,
+        });
 
-      return metadata;
-    } catch (err) {
-      const duration = Date.now() - startTime;
-      this.metrics.incrementPublishFailures(event.producer, event.eventType);
+        return metadata;
+      } catch (err) {
+        const duration = Date.now() - startTime;
+        this.metrics.incrementPublishFailures(event.producer, event.eventType);
 
-      this.logger.error('Failed to publish message to Kafka', err, {
-        topic,
-        eventId: event.eventId,
-        eventType: event.eventType,
-        correlationId: event.correlationId,
-        durationMs: duration,
-      });
-      throw err;
-    }
+        this.logger.error('Failed to publish message to Kafka', err, {
+          topic,
+          eventId: event.eventId,
+          eventType: event.eventType,
+          correlationId: event.correlationId,
+          durationMs: duration,
+        });
+
+        span.recordException(err as Error);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
+        throw err;
+      } finally {
+        span.end();
+      }
+    });
   }
 }

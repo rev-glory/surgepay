@@ -2,6 +2,7 @@ import { Consumer, Kafka, EachMessagePayload } from 'kafkajs';
 import { EventSerializer, EventEnvelope, InboxEvent, InboxStatus, DeadLetterEvent, DeadLetterPayload } from '@surgepay/events';
 import { LoggerService, MetricsService } from '@surgepay/common';
 import { randomUUID } from 'crypto';
+import { context, propagation, trace, SpanKind, SpanStatusCode } from '@opentelemetry/api';
 import { DuplicateEventException, EventCurrentlyProcessingException } from './duplicate-event.exception';
 import { KafkaEventHandler } from './event-handler.interface';
 import { DlqPublisher } from './dlq.publisher';
@@ -124,67 +125,99 @@ export abstract class BaseKafkaConsumer {
       return;
     }
 
-    let envelope: EventEnvelope;
-    try {
-      envelope = this.serializer.deserialize(value);
-      this.serializer.validate(envelope);
-    } catch (err) {
-      this.logger.error('Failed to deserialize/validate message envelope', err, {
-        topic,
-        partition,
-        offset: message.offset,
-      });
-      throw err;
+    // Extract OpenTelemetry Context from Kafka Headers
+    const carrier: Record<string, string> = {};
+    if (message.headers) {
+      for (const [key, val] of Object.entries(message.headers)) {
+        if (val !== undefined) {
+          carrier[key] = Buffer.isBuffer(val) ? val.toString('utf8') : String(val);
+        }
+      }
     }
+    const parentContext = propagation.extract(context.active(), carrier);
 
-    const startTime = Date.now();
-    this.metrics.incrementConsumed(this.getServiceName(), envelope.eventType, this.options.groupId);
+    const tracer = trace.getTracer('@surgepay/common-messaging');
+    const span = tracer.startSpan(`${topic} consume`, {
+      kind: SpanKind.CONSUMER,
+      attributes: {
+        'messaging.system': 'kafka',
+        'messaging.destination.name': topic,
+        'messaging.operation': 'receive',
+        'messaging.kafka.consumer.group': this.options.groupId,
+      },
+    }, parentContext);
 
-    let dbRecord: InboxEvent;
-    try {
-      // 1. Try to optimistic insert
-      dbRecord = await this.persister.persistReceived(envelope);
-      this.metrics.incrementReceived(this.getServiceName(), envelope.eventType, this.options.groupId);
-    } catch (err) {
-      if (err instanceof DuplicateEventException) {
-        // 2. Query existing record to reconcile status
-        const existing = await this.persister.find(this.options.groupId, envelope.eventId);
-        if (!existing) {
-          this.logger.error('Optimistic insert unique constraint triggered but record not found during lookup', err, {
-            eventId: envelope.eventId,
-            consumer: this.options.groupId,
+    return context.with(trace.setSpan(parentContext, span), async () => {
+      try {
+        let envelope: EventEnvelope;
+        try {
+          envelope = this.serializer.deserialize(value);
+          this.serializer.validate(envelope);
+        } catch (err) {
+          this.logger.error('Failed to deserialize/validate message envelope', err, {
+            topic,
+            partition,
+            offset: message.offset,
           });
           throw err;
         }
 
-        if (existing.status === InboxStatus.PROCESSED || existing.status === InboxStatus.DLQ_SENT) {
-          // Skip execution (duplicate detected or already quarantined)
-          this.logger.info('Duplicate event detected (already processed/DLQed). Skipping business logic.', {
-            eventId: envelope.eventId,
-            consumer: this.options.groupId,
-            eventType: envelope.eventType,
-            correlationId: envelope.correlationId,
-            sagaId: envelope.sagaId,
-            duplicate: true,
-          });
-          this.metrics.incrementDuplicates(this.getServiceName(), envelope.eventType, this.options.groupId);
-          return; // returns success and commits offset
+        const startTime = Date.now();
+        this.metrics.incrementConsumed(this.getServiceName(), envelope.eventType, this.options.groupId);
+
+        let dbRecord: InboxEvent;
+        try {
+          // 1. Try to optimistic insert
+          dbRecord = await this.persister.persistReceived(envelope);
+          this.metrics.incrementReceived(this.getServiceName(), envelope.eventType, this.options.groupId);
+        } catch (err) {
+          if (err instanceof DuplicateEventException) {
+            // 2. Query existing record to reconcile status
+            const existing = await this.persister.find(this.options.groupId, envelope.eventId);
+            if (!existing) {
+              this.logger.error('Optimistic insert unique constraint triggered but record not found during lookup', err, {
+                eventId: envelope.eventId,
+                consumer: this.options.groupId,
+              });
+              throw err;
+            }
+
+            if (existing.status === InboxStatus.PROCESSED || existing.status === InboxStatus.DLQ_SENT) {
+              // Skip execution (duplicate detected or already quarantined)
+              this.logger.info('Duplicate event detected (already processed/DLQed). Skipping business logic.', {
+                eventId: envelope.eventId,
+                consumer: this.options.groupId,
+                eventType: envelope.eventType,
+                correlationId: envelope.correlationId,
+                sagaId: envelope.sagaId,
+                duplicate: true,
+              });
+              this.metrics.incrementDuplicates(this.getServiceName(), envelope.eventType, this.options.groupId);
+              return; // returns success and commits offset
+            }
+
+            if (existing.status === InboxStatus.PROCESSING) {
+              // Concurrent or in-flight block: throw to trigger backoff retry
+              throw new EventCurrentlyProcessingException(envelope.eventId, this.options.groupId);
+            }
+
+            // Otherwise (RECEIVED, FAILED, RETRYING), pick it up for processing/retry
+            dbRecord = existing;
+          } else {
+            throw err;
+          }
         }
 
-        if (existing.status === InboxStatus.PROCESSING) {
-          // Concurrent or in-flight block: throw to trigger backoff retry
-          throw new EventCurrentlyProcessingException(envelope.eventId, this.options.groupId);
-        }
-
-        // Otherwise (RECEIVED, FAILED, RETRYING), pick it up for processing/retry
-        dbRecord = existing;
-      } else {
+        // 3. Execute the handler within states
+        await this.processEvent(dbRecord, envelope, startTime);
+      } catch (err) {
+        span.recordException(err as Error);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
         throw err;
+      } finally {
+        span.end();
       }
-    }
-
-    // 3. Execute the handler within states
-    await this.processEvent(dbRecord, envelope, startTime);
+    });
   }
 
   /**
