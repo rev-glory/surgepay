@@ -7,4 +7,5 @@ export * from './producer/producer.interface';
 export * from './producer/producer.options';
 export * from './producer/kafka.producer';
 export * from './producer/producer.service';
+export * from './consumer/kafka-consumer';
 export * from './messaging.module';

@@ -9,3 +9,37 @@ generator client {
   previewFeatures = ["multiSchema"]
   output          = "../generated/balance"
 }
+
+enum InboxStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+  RETRYING
+
+  @@schema("balance")
+}
+
+model InboxEvent {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId       String      @db.Uuid
+  consumer      String
+  eventType     String
+  status        InboxStatus @default(RECEIVED)
+  payload       Json
+  correlationId String      @db.Uuid
+  causationId   String      @db.Uuid
+  sagaId        String?     @db.Uuid
+  receivedAt    DateTime    @default(now()) @db.Timestamptz(6)
+  processedAt   DateTime?   @db.Timestamptz(6)
+  retryCount    Int         @default(0)
+  failureReason String?
+  createdAt     DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime    @updatedAt @db.Timestamptz(6)
+
+  @@unique([consumer, eventId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([correlationId])
+  @@schema("balance")
+}

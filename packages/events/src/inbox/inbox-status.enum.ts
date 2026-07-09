@@ -1,0 +1,7 @@
+export enum InboxStatus {
+  RECEIVED = 'RECEIVED',
+  PROCESSING = 'PROCESSING',
+  PROCESSED = 'PROCESSED',
+  FAILED = 'FAILED',
+  RETRYING = 'RETRYING',
+}

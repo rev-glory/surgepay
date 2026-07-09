@@ -47,6 +47,7 @@
       "@shared/*": ["packages/common/src/*"],
       "@database": ["packages/database/src"],
       "@database/*": ["packages/database/src/*"],
+      "@surgepay/database/generated/*": ["packages/database/generated/*"],
       "@surgepay/common-http": ["packages/common/http/src"],
       "@surgepay/common-http/*": ["packages/common/http/src/*"],
       "@surgepay/common-messaging": ["packages/common/messaging/src"],
