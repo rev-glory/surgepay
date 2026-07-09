@@ -206,10 +206,12 @@ AGENTS.md
 commits.txt
 doc-v3.txt
 verification_report.md
+docs/
+scratch/
 
 # =====================================================
 # Compiled Artifacts in Source Folders
 # =====================================================
 **/src/**/*.js
 **/src/**/*.js.map
-**/src/**/*.d.ts
+**/src/**/*.d.ts

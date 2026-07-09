@@ -13,6 +13,7 @@ import redisConfig from './configs/redis.config';
 import securityConfig from './configs/security.config';
 import servicesConfig from './configs/services.config';
 import telemetryConfig from './configs/telemetry.config';
+import outboxConfig from './configs/outbox.config';
 import { validate } from './validation';
 
 function getEnvFilePath(): string {
@@ -52,6 +53,7 @@ function getEnvFilePath(): string {
         telemetryConfig,
         securityConfig,
         servicesConfig,
+        outboxConfig,
       ],
       validate,
     }),

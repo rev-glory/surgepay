@@ -61,3 +61,10 @@ export interface ServicesConfig {
   internalRequestRetryDelay: number;
 }
 
+export interface OutboxConfig {
+  pollingInterval: number;
+  batchSize: number;
+  publishTimeout: number;
+  retryLimit: number;
+}
+

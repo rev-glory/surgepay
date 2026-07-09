@@ -9,6 +9,7 @@ import { redisSchema } from './schemas/redis.schema';
 import { securitySchema } from './schemas/security.schema';
 import { servicesSchema } from './schemas/services.schema';
 import { telemetrySchema } from './schemas/telemetry.schema';
+import { outboxSchema } from './schemas/outbox.schema';
 
 export const environmentSchema = z
   .object({
@@ -21,7 +22,8 @@ export const environmentSchema = z
   .merge(loggingSchema)
   .merge(telemetrySchema)
   .merge(securitySchema)
-  .merge(servicesSchema);
+  .merge(servicesSchema)
+  .merge(outboxSchema);
 
 export type Environment = z.infer<typeof environmentSchema>;
 
