@@ -22,6 +22,7 @@ if (!fs.existsSync(resolvedEnvPath)) {
 dotenv.config({ path: resolvedEnvPath });
 
 import { LoggerFactory, LoggerService } from '@surgepay/common';
+
 import { RelayModule } from './relay.module';
 
 async function bootstrap(): Promise<void> {

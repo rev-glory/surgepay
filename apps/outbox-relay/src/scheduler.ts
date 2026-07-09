@@ -1,4 +1,5 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleDestroy,OnModuleInit } from '@nestjs/common';
+
 import { LoggerService } from '@surgepay/common';
 import { ConfigService } from '@surgepay/config';
 
@@ -34,7 +35,7 @@ export class PollingScheduler implements OnModuleInit, OnModuleDestroy {
     }
     this.isRunning = true;
     this.logger.info('Outbox polling scheduler started');
-    this.tick();
+    void this.tick();
   }
 
   /**
@@ -67,7 +68,9 @@ export class PollingScheduler implements OnModuleInit, OnModuleDestroy {
 
     if (this.isRunning) {
       const interval = this.configService.outbox.pollingInterval;
-      this.timer = setTimeout(() => this.tick(), interval);
+      this.timer = setTimeout(() => {
+        void this.tick();
+      }, interval);
     }
   }
 }

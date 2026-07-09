@@ -82,6 +82,10 @@ module.exports = tseslint.config(
       '**/.turbo/**',
       '**/*.tsbuildinfo',
       'pnpm-lock.yaml',
+      '**/jest.config.js',
+      '**/generated/**',
+      'packages/database/**/*.js',
+      'packages/database/**/*.d.ts',
     ],
   },
   {
@@ -99,6 +103,17 @@ module.exports = tseslint.config(
     rules: {
       'no-console': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
+  {
+    // Override for messaging and serialization packages where generic envelopes require 'any'
+    files: [
+      'packages/common/messaging/**/*.ts',
+      'packages/events/**/*.ts',
+    ],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   }
 );

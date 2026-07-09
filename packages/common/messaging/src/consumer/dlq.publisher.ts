@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+
 import { EventEnvelope } from '@surgepay/events';
+
 import { ProducerService } from '../producer/producer.service';
 
 export interface DlqPublisher {

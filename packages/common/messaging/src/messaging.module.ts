@@ -1,15 +1,15 @@
 import { Module } from '@nestjs/common';
+
 import { LoggerModule, MetricsModule } from '@surgepay/common';
 import { ConfigModule, ConfigService } from '@surgepay/config';
 
+import { KafkaDlqPublisher } from './consumer/dlq.publisher';
 import { EVENT_SERIALIZER, KAFKA_PRODUCER, KAFKA_PRODUCER_OPTIONS } from './kafka.tokens';
 import { KafkaProducer } from './producer/kafka.producer';
 import { createKafkaProducer } from './producer/producer.factory';
 import { KafkaProducerOptions } from './producer/producer.options';
 import { ProducerService } from './producer/producer.service';
 import { EventSerializer } from './serializer/event.serializer';
-
-import { KafkaDlqPublisher } from './consumer/dlq.publisher';
 
 @Module({
   imports: [ConfigModule, LoggerModule, MetricsModule],

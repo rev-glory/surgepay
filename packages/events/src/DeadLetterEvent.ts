@@ -1,5 +1,5 @@
-import { BaseEvent } from './BaseEvent';
-import { EventEnvelope } from './EventEnvelope';
+import type { BaseEvent } from './BaseEvent';
+import type { EventEnvelope } from './EventEnvelope';
 
 export interface DeadLetterPayload {
   originalEvent: EventEnvelope;

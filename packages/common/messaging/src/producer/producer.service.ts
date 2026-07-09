@@ -1,6 +1,7 @@
 import { Inject, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { BaseEventEnvelope } from '@surgepay/events';
 import { RecordMetadata } from 'kafkajs';
+
+import { BaseEventEnvelope } from '@surgepay/events';
 
 import { KafkaProducer } from './kafka.producer';
 import { IProducer } from './producer.interface';

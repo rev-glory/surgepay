@@ -1,4 +1,4 @@
-import { InboxStatus } from './inbox-status.enum';
+import type { InboxStatus } from './inbox-status.enum';
 
 export interface InboxEvent<TPayload = unknown> {
   id: string;

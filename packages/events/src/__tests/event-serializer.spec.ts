@@ -1,5 +1,5 @@
+import type { EventEnvelope } from '../EventEnvelope';
 import { EventSerializer, EventValidationError } from '../EventSerializer';
-import { EventEnvelope } from '../EventEnvelope';
 import { EventVersionRegistry } from '../EventVersion';
 
 describe('EventSerializer', () => {

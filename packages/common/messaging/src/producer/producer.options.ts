@@ -1,4 +1,4 @@
-import { KafkaConfig } from 'kafkajs';
+import type { KafkaConfig } from 'kafkajs';
 
 export interface KafkaProducerOptions {
   kafkaConfig: KafkaConfig;

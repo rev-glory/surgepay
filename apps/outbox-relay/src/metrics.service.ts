@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+
 import { LoggerService, MetricsService } from '@surgepay/common';
 
 @Injectable()
@@ -13,7 +14,7 @@ export class RelayMetrics {
   /**
    * Records the duration and details of a single polling cycle.
    */
-  recordPollCycle(durationMs: number, discoveredCount: number): void {
+  recordPollCycle(_durationMs: number, _discoveredCount: number): void {
     // Operational logging
   }
 
@@ -57,7 +58,7 @@ export class RelayMetrics {
   /**
    * Records the latency (lag) between outbox entry insertion and publish completion.
    */
-  recordOutboxLag(createdAt: Date): void {
+  recordOutboxLag(_createdAt: Date): void {
     // OpTelemetry trace / metric hook if needed, but not required by prompt metrics
   }
 

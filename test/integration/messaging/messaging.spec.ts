@@ -505,7 +505,7 @@ describe('Messaging System Integration', () => {
     const brokers = await redpandaContainer.start();
     process.env.KAFKA_BROKERS = brokers;
 
-    await new Promise((resolve) => setTimeout(resolve, 10000));
+    await new Promise((resolve) => setTimeout(resolve, 15000));
 
     // Reconnect producer
     await producerService.connect();

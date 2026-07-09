@@ -1,8 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { LoggerService } from '@surgepay/common';
-import { BaseEventEnvelope } from '@surgepay/events';
-import { ProducerService, TOPICS } from '@surgepay/common-messaging';
 import { RecordMetadata } from 'kafkajs';
+
+import { LoggerService } from '@surgepay/common';
+import { ProducerService, TOPICS } from '@surgepay/common-messaging';
+import { BaseEventEnvelope } from '@surgepay/events';
 
 import { OutboxEvent } from '../../payment-service/src/generated/client';
 

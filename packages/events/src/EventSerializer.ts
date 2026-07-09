@@ -1,5 +1,5 @@
-import { EventEnvelope } from './EventEnvelope';
-import { EventVersionRegistry } from './EventVersion';
+import type { EventEnvelope } from './EventEnvelope';
+import type { EventVersionRegistry } from './EventVersion';
 
 export class EventValidationError extends Error {
   constructor(message: string) {
@@ -29,7 +29,7 @@ export class EventSerializer {
       throw new EventValidationError('Data buffer is empty or null');
     }
     const json = JSON.parse(data.toString());
-    let envelope = json as EventEnvelope<any>;
+    let envelope = json as EventEnvelope<unknown>;
     this.validate(envelope);
 
     if (targetVersion !== undefined && envelope.version < targetVersion) {
@@ -42,17 +42,18 @@ export class EventSerializer {
   /**
    * Deterministically validates event envelope fields.
    */
-  validate(envelope: any): void {
+  validate(envelope: unknown): void {
     if (!envelope) {
       throw new EventValidationError('Event envelope is null or undefined');
     }
+    const env = envelope as Record<string, unknown>;
     const requiredFields = ['eventId', 'eventType', 'payload', 'timestamp', 'version'];
     for (const field of requiredFields) {
-      if (envelope[field] === undefined || envelope[field] === null) {
+      if (env[field] === undefined || env[field] === null) {
         throw new EventValidationError(`Missing required envelope field "${field}"`);
       }
     }
-    if (typeof envelope.version !== 'number') {
+    if (typeof env.version !== 'number') {
       throw new EventValidationError('"version" must be a number');
     }
   }
@@ -60,7 +61,7 @@ export class EventSerializer {
   /**
    * Sequentially upgrades the schema version of the payload using registered registry upgraders.
    */
-  upgradeVersion(envelope: EventEnvelope<any>, targetVersion: number): EventEnvelope<any> {
+  upgradeVersion(envelope: EventEnvelope<unknown>, targetVersion: number): EventEnvelope<unknown> {
     const currentEnvelope = { ...envelope };
     while (currentEnvelope.version < targetVersion) {
       const upgrader = this.registry?.getUpgrader(currentEnvelope.eventType, currentEnvelope.version);

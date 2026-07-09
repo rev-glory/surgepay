@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+
 import { BaseEventEnvelope, EventSerializer as SharedSerializer } from '@surgepay/events';
 
 import { Serializer } from './serializer.interface';

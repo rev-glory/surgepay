@@ -5,11 +5,11 @@ import { databaseSchema } from './schemas/database.schema';
 import { httpSchema } from './schemas/http.schema';
 import { kafkaSchema } from './schemas/kafka.schema';
 import { loggingSchema } from './schemas/logging.schema';
+import { outboxSchema } from './schemas/outbox.schema';
 import { redisSchema } from './schemas/redis.schema';
 import { securitySchema } from './schemas/security.schema';
 import { servicesSchema } from './schemas/services.schema';
 import { telemetrySchema } from './schemas/telemetry.schema';
-import { outboxSchema } from './schemas/outbox.schema';
 
 export const environmentSchema = z
   .object({

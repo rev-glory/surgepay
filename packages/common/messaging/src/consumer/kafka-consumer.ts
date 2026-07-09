@@ -1,12 +1,15 @@
-import { Consumer, Kafka, EachMessagePayload } from 'kafkajs';
-import { EventSerializer, EventEnvelope, InboxEvent, InboxStatus, DeadLetterEvent, DeadLetterPayload } from '@surgepay/events';
-import { LoggerService, MetricsService } from '@surgepay/common';
 import { randomUUID } from 'crypto';
-import { context, propagation, trace, SpanKind, SpanStatusCode } from '@opentelemetry/api';
+
+import { context, propagation, SpanKind, SpanStatusCode,trace } from '@opentelemetry/api';
+import type { Consumer, EachMessagePayload,Kafka } from 'kafkajs';
+
+import type { LoggerService, MetricsService } from '@surgepay/common';
+import { DeadLetterEvent, type DeadLetterPayload, type EventEnvelope, EventSerializer, type InboxEvent,InboxStatus } from '@surgepay/events';
+
+import type { DlqPublisher } from './dlq.publisher';
 import { DuplicateEventException, EventCurrentlyProcessingException } from './duplicate-event.exception';
-import { KafkaEventHandler } from './event-handler.interface';
-import { DlqPublisher } from './dlq.publisher';
-import { RetryPolicy, MaxAttemptsRetryPolicy } from './retry-policy';
+import type { KafkaEventHandler } from './event-handler.interface';
+import { MaxAttemptsRetryPolicy, type RetryPolicy } from './retry-policy';
 
 export interface InboxPersister {
   /**

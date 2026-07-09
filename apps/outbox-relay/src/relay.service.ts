@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { LoggerService, RequestContext } from '@surgepay/common';
+
+import { LoggerService } from '@surgepay/common';
 import { ConfigService } from '@surgepay/config';
 
+import { BackpressureController } from './backpressure';
+import { RelayMetrics } from './metrics.service';
 import { Poller } from './poller';
 import { PrismaService } from './prisma.service';
 import { OutboxPublisher } from './publisher';
-import { RelayMetrics } from './metrics.service';
-import { BackpressureController } from './backpressure';
 
 @Injectable()
 export class RelayService {

@@ -1,6 +1,6 @@
-import { Kafka, Producer } from 'kafkajs';
+import { Kafka, type Producer } from 'kafkajs';
 
-import { KafkaProducerOptions } from './producer.options';
+import type { KafkaProducerOptions } from './producer.options';
 
 export function createKafkaProducer(options: KafkaProducerOptions): Producer {
   const kafka = new Kafka({

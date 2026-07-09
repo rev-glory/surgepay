@@ -1,13 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { context, propagation, SpanKind, SpanStatusCode,trace } from '@opentelemetry/api';
+import { CompressionTypes, Producer, RecordMetadata } from 'kafkajs';
+
 import { LoggerService, MetricsService } from '@surgepay/common';
 import { BaseEventEnvelope } from '@surgepay/events';
-import { CompressionTypes, Producer, RecordMetadata } from 'kafkajs';
-import { context, propagation, trace, SpanKind, SpanStatusCode } from '@opentelemetry/api';
 
 import { EVENT_SERIALIZER, KAFKA_PRODUCER, KAFKA_PRODUCER_OPTIONS } from '../kafka.tokens';
 import { Serializer } from '../serializer/serializer.interface';
-import { IProducer } from './producer.interface';
 import { createKafkaProducer } from './producer.factory';
+import { IProducer } from './producer.interface';
 import { KafkaProducerOptions } from './producer.options';
 
 @Injectable()

@@ -1,6 +1,7 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { getOrCreatePrismaClient, isConnected } from '@surgepay/database';
+import { Injectable, OnModuleDestroy,OnModuleInit } from '@nestjs/common';
+
 import { HealthDatabaseClient } from '@surgepay/common';
+import { getOrCreatePrismaClient, isConnected } from '@surgepay/database';
 
 import { PrismaClient } from '../../payment-service/src/generated/client';
 

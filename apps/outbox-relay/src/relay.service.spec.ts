@@ -1,12 +1,13 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
+
 import { LoggerService } from '@surgepay/common';
 import { ConfigService } from '@surgepay/config';
 
-import { RelayService } from './relay.service';
-import { Poller } from './poller';
-import { OutboxPublisher } from './publisher';
-import { PrismaService } from './prisma.service';
 import { RelayMetrics } from './metrics.service';
+import { Poller } from './poller';
+import { PrismaService } from './prisma.service';
+import { OutboxPublisher } from './publisher';
+import { RelayService } from './relay.service';
 
 describe('RelayService', () => {
   let relayService: RelayService;

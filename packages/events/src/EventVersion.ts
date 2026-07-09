@@ -1,6 +1,6 @@
 export type EventVersion = number;
 
-export type EventUpgrader<TFrom = any, TTo = any> = (payload: TFrom) => TTo;
+export type EventUpgrader<TFrom = unknown, TTo = unknown> = (payload: TFrom) => TTo;
 
 export class EventVersionRegistry {
   private readonly upgraders = new Map<string, Map<number, EventUpgrader>>();

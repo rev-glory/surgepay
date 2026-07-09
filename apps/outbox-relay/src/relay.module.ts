@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
-import { LoggerModule, MetricsModule } from '@surgepay/common';
-import { ConfigModule } from '@surgepay/config';
-import { MessagingModule } from '@surgepay/common-messaging';
 
-import { PrismaService } from './prisma.service';
-import { Poller } from './poller';
-import { KafkaPublisher, OutboxPublisher } from './publisher';
+import { LoggerModule, MetricsModule } from '@surgepay/common';
+import { MessagingModule } from '@surgepay/common-messaging';
+import { ConfigModule } from '@surgepay/config';
+
 import { RelayMetrics } from './metrics.service';
+import { Poller } from './poller';
+import { PrismaService } from './prisma.service';
+import { KafkaPublisher, OutboxPublisher } from './publisher';
 import { RelayService } from './relay.service';
 import { PollingScheduler } from './scheduler';
 

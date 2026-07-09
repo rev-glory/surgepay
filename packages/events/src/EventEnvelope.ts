@@ -1,4 +1,4 @@
-import { BaseEvent } from './BaseEvent';
+import type { BaseEvent } from './BaseEvent';
 
 export interface EventEnvelope<T = unknown> extends BaseEvent<T> {
   eventId: string;

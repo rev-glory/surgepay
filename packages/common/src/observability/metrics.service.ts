@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Counter, Gauge, Histogram, register } from 'prom-client';
-import { PRODUCER_METRICS } from './producer.metrics';
+
 import { CONSUMER_METRICS } from './consumer.metrics';
-import { OUTBOX_METRICS } from './outbox.metrics';
 import { INBOX_METRICS } from './inbox.metrics';
+import { OUTBOX_METRICS } from './outbox.metrics';
+import { PRODUCER_METRICS } from './producer.metrics';
 
 @Injectable()
 export class MetricsService {

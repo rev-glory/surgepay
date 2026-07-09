@@ -9,11 +9,11 @@ import databaseConfig from './configs/database.config';
 import httpConfig from './configs/http.config';
 import kafkaConfig from './configs/kafka.config';
 import loggingConfig from './configs/logging.config';
+import outboxConfig from './configs/outbox.config';
 import redisConfig from './configs/redis.config';
 import securityConfig from './configs/security.config';
 import servicesConfig from './configs/services.config';
 import telemetryConfig from './configs/telemetry.config';
-import outboxConfig from './configs/outbox.config';
 import { validate } from './validation';
 
 function getEnvFilePath(): string {

@@ -1,13 +1,15 @@
-import { Kafka, Consumer, EachMessagePayload } from 'kafkajs';
-import { EventEnvelope, InboxEvent, InboxStatus } from '@surgepay/events';
-import { LoggerService, MetricsService } from '@surgepay/common';
-import { BaseKafkaConsumer, InboxPersister } from './kafka-consumer';
-import { KafkaEventHandler } from './event-handler.interface';
+import type { Consumer, EachMessagePayload,Kafka } from 'kafkajs';
+
+import type { LoggerService, MetricsService } from '@surgepay/common';
+import { type EventEnvelope, type InboxEvent,InboxStatus } from '@surgepay/events';
+
+import type { DlqPublisher } from './dlq.publisher';
 import { DuplicateEventException, EventCurrentlyProcessingException } from './duplicate-event.exception';
-import { DlqPublisher } from './dlq.publisher';
+import type { KafkaEventHandler } from './event-handler.interface';
+import { BaseKafkaConsumer, type InboxPersister } from './kafka-consumer';
 
 class DummyConsumer extends BaseKafkaConsumer {
-  protected async onEventPersisted(envelope: EventEnvelope): Promise<void> {}
+  protected async onEventPersisted(_envelope: EventEnvelope): Promise<void> {}
 }
 
 describe('Idempotent Kafka Consumer', () => {
