@@ -4,6 +4,7 @@ import { LoggerService } from '@surgepay/common';
 import { BaseKafkaConsumer, InboxPersister } from './kafka-consumer';
 import { KafkaEventHandler } from './event-handler.interface';
 import { DuplicateEventException, EventCurrentlyProcessingException } from './duplicate-event.exception';
+import { DlqPublisher } from './dlq.publisher';
 
 class DummyConsumer extends BaseKafkaConsumer {
   protected async onEventPersisted(envelope: EventEnvelope): Promise<void> {}
@@ -14,6 +15,7 @@ describe('Idempotent Kafka Consumer', () => {
   let mockConsumer: jest.Mocked<Consumer>;
   let mockPersister: jest.Mocked<InboxPersister>;
   let mockHandler: jest.Mocked<KafkaEventHandler>;
+  let mockDlqPublisher: jest.Mocked<DlqPublisher>;
   let mockLogger: jest.Mocked<LoggerService>;
   let consumerInstance: DummyConsumer;
   let runCallback: ((payload: EachMessagePayload) => Promise<void>) | null = null;
@@ -70,10 +72,15 @@ describe('Idempotent Kafka Consumer', () => {
       markProcessed: jest.fn(),
       markFailed: jest.fn(),
       markRetrying: jest.fn(),
+      markDlqSent: jest.fn(),
     };
 
     mockHandler = {
       handle: jest.fn().mockResolvedValue(undefined),
+    };
+
+    mockDlqPublisher = {
+      publish: jest.fn().mockResolvedValue(undefined),
     };
 
     mockLogger = {
@@ -87,10 +94,13 @@ describe('Idempotent Kafka Consumer', () => {
       mockKafka,
       mockPersister,
       mockHandler,
+      mockDlqPublisher,
       mockLogger,
       {
         groupId: 'test-group',
         topics: ['payment.events'],
+        dlqTopic: 'payment.dlq',
+        maxRetries: 3,
       },
     );
   });
@@ -153,7 +163,7 @@ describe('Idempotent Kafka Consumer', () => {
     expect(mockPersister.find).toHaveBeenCalledWith('test-group', validEnvelope.eventId);
     expect(mockHandler.handle).not.toHaveBeenCalled();
     expect(mockLogger.info).toHaveBeenCalledWith(
-      'Duplicate event detected. Skipping business logic.',
+      'Duplicate event detected (already processed/DLQed). Skipping business logic.',
       expect.objectContaining({ duplicate: true }),
     );
   });
@@ -163,7 +173,6 @@ describe('Idempotent Kafka Consumer', () => {
       new DuplicateEventException(validEnvelope.eventId, 'test-group'),
     );
 
-    // Reconciles to PROCESSED (as another concurrent thread processed it successfully)
     const mockExistingRecord: InboxEvent = {
       id: 'db-id-1',
       eventId: validEnvelope.eventId,
@@ -253,5 +262,74 @@ describe('Idempotent Kafka Consumer', () => {
 
     expect(mockPersister.find).toHaveBeenCalledWith('test-group', validEnvelope.eventId);
     expect(mockHandler.handle).not.toHaveBeenCalled();
+  });
+
+  it('Scenario 6: Retry Limit Under Maximum - marks failed and retrying, throws error', async () => {
+    const mockRecord: InboxEvent = {
+      id: 'db-id-1',
+      eventId: validEnvelope.eventId,
+      consumer: 'test-group',
+      eventType: validEnvelope.eventType,
+      status: InboxStatus.RECEIVED,
+      payload: validEnvelope.payload,
+      correlationId: validEnvelope.correlationId,
+      causationId: validEnvelope.causationId,
+      sagaId: validEnvelope.sagaId,
+      receivedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      retryCount: 1, // maxRetries is 3, so under limit
+    };
+
+    mockPersister.persistReceived.mockResolvedValue(mockRecord);
+    mockHandler.handle.mockRejectedValue(new Error('Transient database deadlock'));
+
+    await consumerInstance.connect();
+    await expect(runCallback!(mockEachMessagePayload)).rejects.toThrow('Transient database deadlock');
+
+    expect(mockPersister.markProcessing).toHaveBeenCalledWith('db-id-1');
+    expect(mockPersister.markFailed).toHaveBeenCalledWith('db-id-1', 'Transient database deadlock');
+    expect(mockPersister.markRetrying).toHaveBeenCalledWith('db-id-1', 'Transient database deadlock');
+    expect(mockDlqPublisher.publish).not.toHaveBeenCalled();
+  });
+
+  it('Scenario 7: Retry Limit Exhausted - wraps and publishes to DLQ, resolves cleanly', async () => {
+    const mockRecord: InboxEvent = {
+      id: 'db-id-1',
+      eventId: validEnvelope.eventId,
+      consumer: 'test-group',
+      eventType: validEnvelope.eventType,
+      status: InboxStatus.RECEIVED,
+      payload: validEnvelope.payload,
+      correlationId: validEnvelope.correlationId,
+      causationId: validEnvelope.causationId,
+      sagaId: validEnvelope.sagaId,
+      receivedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      retryCount: 3, // At maximum retry count limit (3)
+    };
+
+    mockPersister.persistReceived.mockResolvedValue(mockRecord);
+    mockHandler.handle.mockRejectedValue(new Error('Permanent deserialization error'));
+
+    await consumerInstance.connect();
+    await runCallback!(mockEachMessagePayload); // resolves cleanly, offset committed
+
+    expect(mockPersister.markFailed).toHaveBeenCalledWith('db-id-1', 'Permanent deserialization error');
+    expect(mockDlqPublisher.publish).toHaveBeenCalledWith(
+      'payment.dlq',
+      expect.objectContaining({
+        eventType: 'DeadLetterEvent',
+        correlationId: validEnvelope.correlationId,
+        sagaId: validEnvelope.sagaId,
+        payload: expect.objectContaining({
+          consumer: 'test-group',
+          retryCount: 3,
+          failureReason: 'Permanent deserialization error',
+        }),
+      }),
+    );
+    expect(mockPersister.markDlqSent).toHaveBeenCalledWith('db-id-1');
   });
 });

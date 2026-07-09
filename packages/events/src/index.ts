@@ -6,3 +6,4 @@ export * from './EventVersion';
 export * from './EventSerializer';
 export * from './inbox/inbox-status.enum';
 export * from './inbox/inbox-event.interface';
+export * from './DeadLetterEvent';

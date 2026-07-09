@@ -1,8 +1,11 @@
 import { Consumer, Kafka, EachMessagePayload } from 'kafkajs';
-import { EventSerializer, EventEnvelope, InboxEvent } from '@surgepay/events';
+import { EventSerializer, EventEnvelope, InboxEvent, InboxStatus, DeadLetterEvent, DeadLetterPayload } from '@surgepay/events';
 import { LoggerService } from '@surgepay/common';
+import { randomUUID } from 'crypto';
 import { DuplicateEventException, EventCurrentlyProcessingException } from './duplicate-event.exception';
 import { KafkaEventHandler } from './event-handler.interface';
+import { DlqPublisher } from './dlq.publisher';
+import { RetryPolicy, MaxAttemptsRetryPolicy } from './retry-policy';
 
 export interface InboxPersister {
   /**
@@ -35,26 +38,36 @@ export interface InboxPersister {
    * Transitions event state to RETRYING and increments retryCount.
    */
   markRetrying(id: string, reason: string): Promise<void>;
+
+  /**
+   * Transitions event state to DLQ_SENT. Keep metadata lightweight (details in DLQ itself).
+   */
+  markDlqSent(id: string): Promise<void>;
 }
 
 export interface ConsumerOptions {
   groupId: string;
   topics: string[];
   fromBeginning?: boolean;
+  dlqTopic: string;
+  maxRetries: number;
 }
 
 export abstract class BaseKafkaConsumer {
   private readonly consumerClient: Consumer;
   private readonly serializer = new EventSerializer();
+  private readonly retryPolicy: RetryPolicy;
 
   constructor(
     protected readonly kafka: Kafka,
     protected readonly persister: InboxPersister,
     protected readonly handler: KafkaEventHandler,
+    protected readonly dlqPublisher: DlqPublisher,
     protected readonly logger: LoggerService,
     protected readonly options: ConsumerOptions,
   ) {
     this.consumerClient = this.kafka.consumer({ groupId: this.options.groupId });
+    this.retryPolicy = new MaxAttemptsRetryPolicy(this.options.maxRetries);
   }
 
   /**
@@ -131,9 +144,9 @@ export abstract class BaseKafkaConsumer {
           throw err;
         }
 
-        if (existing.status === 'PROCESSED') {
-          // Skip execution (duplicate detected)
-          this.logger.info('Duplicate event detected. Skipping business logic.', {
+        if (existing.status === InboxStatus.PROCESSED || existing.status === InboxStatus.DLQ_SENT) {
+          // Skip execution (duplicate detected or already quarantined)
+          this.logger.info('Duplicate event detected (already processed/DLQed). Skipping business logic.', {
             eventId: envelope.eventId,
             consumer: this.options.groupId,
             eventType: envelope.eventType,
@@ -144,7 +157,7 @@ export abstract class BaseKafkaConsumer {
           return; // returns success and commits offset
         }
 
-        if (existing.status === 'PROCESSING') {
+        if (existing.status === InboxStatus.PROCESSING) {
           // Concurrent or in-flight block: throw to trigger backoff retry
           throw new EventCurrentlyProcessingException(envelope.eventId, this.options.groupId);
         }
@@ -162,6 +175,7 @@ export abstract class BaseKafkaConsumer {
 
   /**
    * Executes transition to PROCESSING, runs handler, and transitions to PROCESSED on success.
+   * If failure, evaluates retry limits via RetryPolicy to retry or route to DLQ.
    */
   private async processEvent(record: InboxEvent, envelope: EventEnvelope): Promise<void> {
     await this.persister.markProcessing(record.id);
@@ -169,17 +183,66 @@ export abstract class BaseKafkaConsumer {
       await this.handler.handle(envelope);
       await this.persister.markProcessed(record.id);
     } catch (err) {
-      this.logger.error('Handler execution failed, updating inbox status', err, {
-        eventId: envelope.eventId,
-        consumer: this.options.groupId,
-        eventType: envelope.eventType,
-        correlationId: envelope.correlationId,
-        sagaId: envelope.sagaId,
-      });
       const reason = err instanceof Error ? err.message : String(err);
       await this.persister.markFailed(record.id, reason);
-      await this.persister.markRetrying(record.id, reason);
-      throw err; // throw to trigger consumer-level retries
+
+      if (this.retryPolicy.shouldMoveToDlq(record.retryCount)) {
+        // Retry limit exhausted -> Publish to DLQ
+        this.logger.warn('Retry limit exhausted. Route event to DLQ.', {
+          eventId: envelope.eventId,
+          consumer: this.options.groupId,
+          retryCount: record.retryCount,
+          failureReason: reason,
+          dlqTopic: this.options.dlqTopic,
+          correlationId: envelope.correlationId,
+          sagaId: envelope.sagaId,
+        });
+
+        try {
+          const dlqPayload: DeadLetterPayload = {
+            originalEvent: envelope,
+            consumer: this.options.groupId,
+            retryCount: record.retryCount,
+            failureReason: reason,
+            failedAt: new Date().toISOString(),
+          };
+
+          const dlqEvent = new DeadLetterEvent(dlqPayload);
+          const dlqEnvelope: EventEnvelope = {
+            eventId: randomUUID(),
+            eventType: dlqEvent.eventType,
+            version: dlqEvent.version,
+            timestamp: new Date().toISOString(),
+            requestId: envelope.requestId,
+            correlationId: envelope.correlationId,
+            causationId: envelope.causationId,
+            sagaId: envelope.sagaId,
+            producer: this.options.groupId,
+            payload: dlqEvent.payload,
+          };
+
+          await this.dlqPublisher.publish(this.options.dlqTopic, dlqEnvelope);
+          await this.persister.markDlqSent(record.id);
+          // Return cleanly to let KafkaJS commit the offset and progress the queue
+          return;
+        } catch (dlqErr) {
+          this.logger.error('Fatal error during Dead Letter Queue publishing', dlqErr, {
+            eventId: envelope.eventId,
+          });
+          throw dlqErr; // crash and let consumer restart
+        }
+      } else {
+        // Under retry limit -> Increment retryCount and re-throw
+        this.logger.info('Handler execution failed. Registering retry attempt.', {
+          eventId: envelope.eventId,
+          consumer: this.options.groupId,
+          retryCount: record.retryCount,
+          failureReason: reason,
+          correlationId: envelope.correlationId,
+        });
+        await this.persister.markRetrying(record.id, reason);
+        throw err;
+      }
     }
   }
 }

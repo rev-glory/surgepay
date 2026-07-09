@@ -4,6 +4,7 @@ enum InboxStatus {
   PROCESSED
   FAILED
   RETRYING
+  DLQ_SENT
 }
 
 model InboxEvent {

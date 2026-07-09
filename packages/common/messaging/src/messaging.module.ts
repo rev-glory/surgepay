@@ -9,6 +9,8 @@ import { KafkaProducerOptions } from './producer/producer.options';
 import { ProducerService } from './producer/producer.service';
 import { EventSerializer } from './serializer/event.serializer';
 
+import { KafkaDlqPublisher } from './consumer/dlq.publisher';
+
 @Module({
   imports: [ConfigModule, LoggerModule],
   providers: [
@@ -49,7 +51,8 @@ import { EventSerializer } from './serializer/event.serializer';
     },
     KafkaProducer,
     ProducerService,
+    KafkaDlqPublisher,
   ],
-  exports: [ProducerService, EVENT_SERIALIZER],
+  exports: [ProducerService, EVENT_SERIALIZER, KafkaDlqPublisher],
 })
 export class MessagingModule {}

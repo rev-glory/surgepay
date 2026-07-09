@@ -112,4 +112,16 @@ export class InboxRepository implements InboxPersister {
     });
     return record as InboxEvent | null;
   }
+
+  /**
+   * Transitions state to DLQ_SENT.
+   */
+  async markDlqSent(id: string): Promise<void> {
+    await this.prisma.client.inboxEvent.update({
+      where: { id },
+      data: {
+        status: 'DLQ_SENT',
+      },
+    });
+  }
 }

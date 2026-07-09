@@ -4,4 +4,5 @@ export enum InboxStatus {
   PROCESSED = 'PROCESSED',
   FAILED = 'FAILED',
   RETRYING = 'RETRYING',
+  DLQ_SENT = 'DLQ_SENT',
 }
