@@ -35,7 +35,7 @@ async function bootstrap(): Promise<void> {
   bootstrapLogger.info('Bootstrapping Outbox Relay Service...');
 
   // Create standard standalone application context for background tasks
-  const app = await NestFactory.createApplicationContext(RelayModule, {
+  const app = await NestFactory.create(RelayModule, {
     logger: bootstrapLogger,
   });
 
@@ -45,7 +45,9 @@ async function bootstrap(): Promise<void> {
   // Enable Graceful Shutdown hooks
   app.enableShutdownHooks();
 
-  logger.info('Outbox Relay Service bootstrapped successfully and running.');
+  const port = process.env.PORT || 3010;
+  await app.listen(port, '0.0.0.0');
+  logger.info(`Outbox Relay Service metrics server running on http://localhost:${port}`);
 }
 
 bootstrap().catch((error) => {

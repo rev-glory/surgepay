@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { LoggerService } from '@surgepay/common';
+import { LoggerService, MetricsService } from '@surgepay/common';
 import { BaseEventEnvelope } from '@surgepay/events';
 import { CompressionTypes, Producer, RecordMetadata } from 'kafkajs';
 
@@ -15,6 +15,7 @@ export class KafkaProducer implements IProducer {
     @Inject(KAFKA_PRODUCER) private readonly rawProducer: Producer,
     @Inject(EVENT_SERIALIZER) private readonly serializer: Serializer,
     @Inject(LoggerService) private readonly logger: LoggerService,
+    private readonly metrics: MetricsService,
   ) {
     this.logger.setContext('KafkaProducer');
   }
@@ -72,6 +73,9 @@ export class KafkaProducer implements IProducer {
       });
 
       const duration = Date.now() - startTime;
+      this.metrics.incrementPublished(event.producer, event.eventType);
+      this.metrics.recordPublishDuration(event.producer, event.eventType, duration);
+
       this.logger.info('Successfully published message to Kafka', {
         topic,
         eventId: event.eventId,
@@ -83,6 +87,8 @@ export class KafkaProducer implements IProducer {
       return metadata;
     } catch (err) {
       const duration = Date.now() - startTime;
+      this.metrics.incrementPublishFailures(event.producer, event.eventType);
+
       this.logger.error('Failed to publish message to Kafka', err, {
         topic,
         eventId: event.eventId,

@@ -31,6 +31,40 @@ export class RelayService {
 
     this.logger.debug('Starting outbox relay polling cycle', { batchSize });
 
+    // Track gauge metrics of Outbox database state
+    try {
+      const counts = await this.prismaService.client.outboxEvent.groupBy({
+        by: ['eventType', 'status'],
+        _count: {
+          _all: true,
+        },
+      });
+
+      const pendingCounts: Record<string, number> = {};
+      const publishedCounts: Record<string, number> = {};
+      const failedCounts: Record<string, number> = {};
+
+      for (const item of counts) {
+        const et = item.eventType;
+        const count = item._count._all;
+        if (item.status === 'PUBLISHED') {
+          publishedCounts[et] = (publishedCounts[et] || 0) + count;
+        } else if (item.status === 'FAILED') {
+          failedCounts[et] = (failedCounts[et] || 0) + count;
+        } else {
+          pendingCounts[et] = (pendingCounts[et] || 0) + count;
+        }
+      }
+
+      for (const et of Object.keys({ ...pendingCounts, ...publishedCounts, ...failedCounts })) {
+        this.metrics.recordPendingCount(et, pendingCounts[et] || 0);
+        this.metrics.recordPublishedCount(et, publishedCounts[et] || 0);
+        this.metrics.recordFailedCount(et, failedCounts[et] || 0);
+      }
+    } catch (metricsErr) {
+      this.logger.error('Failed to update Outbox gauge metrics', metricsErr);
+    }
+
     let processedCount = 0;
 
     try {
@@ -137,7 +171,7 @@ export class RelayService {
                 publishDurationMs: duration,
               });
 
-              this.metrics.recordPublishFailure(event.eventType, true);
+              this.metrics.recordPublishFailure(event.eventType, true, event.retryCount + 1);
 
               try {
                 // 5. Persist intermediate state transition: FAILED

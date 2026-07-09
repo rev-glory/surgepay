@@ -1,6 +1,6 @@
 import { Consumer, Kafka, EachMessagePayload } from 'kafkajs';
 import { EventSerializer, EventEnvelope, InboxEvent, InboxStatus, DeadLetterEvent, DeadLetterPayload } from '@surgepay/events';
-import { LoggerService } from '@surgepay/common';
+import { LoggerService, MetricsService } from '@surgepay/common';
 import { randomUUID } from 'crypto';
 import { DuplicateEventException, EventCurrentlyProcessingException } from './duplicate-event.exception';
 import { KafkaEventHandler } from './event-handler.interface';
@@ -64,6 +64,7 @@ export abstract class BaseKafkaConsumer {
     protected readonly handler: KafkaEventHandler,
     protected readonly dlqPublisher: DlqPublisher,
     protected readonly logger: LoggerService,
+    protected readonly metrics: MetricsService,
     protected readonly options: ConsumerOptions,
   ) {
     this.consumerClient = this.kafka.consumer({ groupId: this.options.groupId });
@@ -102,6 +103,14 @@ export abstract class BaseKafkaConsumer {
    * Processes an incoming Kafka message: deserializes, validates, checks duplicate,
    * performs state verification, and executes the registered handler.
    */
+  private getServiceName(): string {
+    return process.env.APP_NAME || this.options.groupId;
+  }
+
+  /**
+   * Processes an incoming Kafka message: deserializes, validates, checks duplicate,
+   * performs state verification, and executes the registered handler.
+   */
   private async handleMessage(payload: EachMessagePayload): Promise<void> {
     const { message, topic, partition } = payload;
     const value = message.value;
@@ -128,10 +137,14 @@ export abstract class BaseKafkaConsumer {
       throw err;
     }
 
+    const startTime = Date.now();
+    this.metrics.incrementConsumed(this.getServiceName(), envelope.eventType, this.options.groupId);
+
     let dbRecord: InboxEvent;
     try {
       // 1. Try to optimistic insert
       dbRecord = await this.persister.persistReceived(envelope);
+      this.metrics.incrementReceived(this.getServiceName(), envelope.eventType, this.options.groupId);
     } catch (err) {
       if (err instanceof DuplicateEventException) {
         // 2. Query existing record to reconcile status
@@ -154,6 +167,7 @@ export abstract class BaseKafkaConsumer {
             sagaId: envelope.sagaId,
             duplicate: true,
           });
+          this.metrics.incrementDuplicates(this.getServiceName(), envelope.eventType, this.options.groupId);
           return; // returns success and commits offset
         }
 
@@ -170,20 +184,23 @@ export abstract class BaseKafkaConsumer {
     }
 
     // 3. Execute the handler within states
-    await this.processEvent(dbRecord, envelope);
+    await this.processEvent(dbRecord, envelope, startTime);
   }
 
   /**
    * Executes transition to PROCESSING, runs handler, and transitions to PROCESSED on success.
    * If failure, evaluates retry limits via RetryPolicy to retry or route to DLQ.
    */
-  private async processEvent(record: InboxEvent, envelope: EventEnvelope): Promise<void> {
+  private async processEvent(record: InboxEvent, envelope: EventEnvelope, startTime: number): Promise<void> {
     await this.persister.markProcessing(record.id);
     try {
       await this.handler.handle(envelope);
       await this.persister.markProcessed(record.id);
+      this.metrics.incrementProcessed(this.getServiceName(), envelope.eventType, this.options.groupId);
+      this.metrics.recordConsumerDuration(this.getServiceName(), envelope.eventType, this.options.groupId, Date.now() - startTime);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
+      this.metrics.incrementConsumerFailures(this.getServiceName(), envelope.eventType, this.options.groupId);
       await this.persister.markFailed(record.id, reason);
 
       if (this.retryPolicy.shouldMoveToDlq(record.retryCount)) {
@@ -223,6 +240,7 @@ export abstract class BaseKafkaConsumer {
 
           await this.dlqPublisher.publish(this.options.dlqTopic, dlqEnvelope);
           await this.persister.markDlqSent(record.id);
+          this.metrics.incrementDlqEvents(this.getServiceName(), envelope.eventType, this.options.groupId);
           // Return cleanly to let KafkaJS commit the offset and progress the queue
           return;
         } catch (dlqErr) {

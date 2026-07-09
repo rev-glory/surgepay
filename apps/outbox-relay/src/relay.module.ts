@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { LoggerModule } from '@surgepay/common';
+import { LoggerModule, MetricsModule } from '@surgepay/common';
 import { ConfigModule } from '@surgepay/config';
 import { MessagingModule } from '@surgepay/common-messaging';
 
@@ -11,7 +11,7 @@ import { RelayService } from './relay.service';
 import { PollingScheduler } from './scheduler';
 
 @Module({
-  imports: [ConfigModule, LoggerModule, MessagingModule],
+  imports: [ConfigModule, LoggerModule, MessagingModule, MetricsModule],
   providers: [
     PrismaService,
     Poller,

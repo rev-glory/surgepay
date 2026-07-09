@@ -27,6 +27,7 @@ describe('RelayService', () => {
         outboxEvent: {
           updateMany: jest.fn(),
           update: jest.fn(),
+          groupBy: jest.fn().mockResolvedValue([]),
         },
       } as any,
     };
@@ -52,6 +53,7 @@ describe('RelayService', () => {
       recordPublishFailure: jest.fn(),
       recordOutboxLag: jest.fn(),
       recordPendingCount: jest.fn(),
+      recordPublishedCount: jest.fn(),
       recordFailedCount: jest.fn(),
     };
 

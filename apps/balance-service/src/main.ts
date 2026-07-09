@@ -3,10 +3,15 @@ import { LoggerService } from '@surgepay/common';
 import { AppModule } from './app.module';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.createApplicationContext(AppModule);
+  const app = await NestFactory.create(AppModule);
   const logger = app.get(LoggerService);
+  app.useLogger(logger);
+  app.enableShutdownHooks();
+
+  const port = process.env.PORT || 3006;
+  await app.listen(port, '0.0.0.0');
   logger.setContext('BalanceService');
-  logger.info('Balance Service initialized successfully');
+  logger.info(`Balance Service running on http://localhost:${port}`);
 }
 bootstrap().catch((err) => {
   console.error('Fatal error during Balance Service startup:', err);

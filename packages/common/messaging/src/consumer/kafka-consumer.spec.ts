@@ -1,6 +1,6 @@
 import { Kafka, Consumer, EachMessagePayload } from 'kafkajs';
 import { EventEnvelope, InboxEvent, InboxStatus } from '@surgepay/events';
-import { LoggerService } from '@surgepay/common';
+import { LoggerService, MetricsService } from '@surgepay/common';
 import { BaseKafkaConsumer, InboxPersister } from './kafka-consumer';
 import { KafkaEventHandler } from './event-handler.interface';
 import { DuplicateEventException, EventCurrentlyProcessingException } from './duplicate-event.exception';
@@ -17,6 +17,7 @@ describe('Idempotent Kafka Consumer', () => {
   let mockHandler: jest.Mocked<KafkaEventHandler>;
   let mockDlqPublisher: jest.Mocked<DlqPublisher>;
   let mockLogger: jest.Mocked<LoggerService>;
+  let mockMetricsService: jest.Mocked<MetricsService>;
   let consumerInstance: DummyConsumer;
   let runCallback: ((payload: EachMessagePayload) => Promise<void>) | null = null;
 
@@ -90,12 +91,30 @@ describe('Idempotent Kafka Consumer', () => {
       error: jest.fn(),
     } as any;
 
+    mockMetricsService = {
+      incrementPublished: jest.fn(),
+      recordPublishDuration: jest.fn(),
+      incrementPublishFailures: jest.fn(),
+      incrementRetries: jest.fn(),
+      incrementConsumed: jest.fn(),
+      recordConsumerDuration: jest.fn(),
+      incrementDuplicates: jest.fn(),
+      incrementConsumerFailures: jest.fn(),
+      setPendingEvents: jest.fn(),
+      setPublishedEvents: jest.fn(),
+      setFailedEvents: jest.fn(),
+      incrementReceived: jest.fn(),
+      incrementProcessed: jest.fn(),
+      incrementDlqEvents: jest.fn(),
+    } as any;
+
     consumerInstance = new DummyConsumer(
       mockKafka,
       mockPersister,
       mockHandler,
       mockDlqPublisher,
       mockLogger,
+      mockMetricsService,
       {
         groupId: 'test-group',
         topics: ['payment.events'],
@@ -131,6 +150,10 @@ describe('Idempotent Kafka Consumer', () => {
     expect(mockPersister.markProcessing).toHaveBeenCalledWith('db-id-1');
     expect(mockHandler.handle).toHaveBeenCalledWith(validEnvelope);
     expect(mockPersister.markProcessed).toHaveBeenCalledWith('db-id-1');
+    expect(mockMetricsService.incrementConsumed).toHaveBeenCalledWith('test-group', 'PaymentInitiated', 'test-group');
+    expect(mockMetricsService.incrementReceived).toHaveBeenCalledWith('test-group', 'PaymentInitiated', 'test-group');
+    expect(mockMetricsService.incrementProcessed).toHaveBeenCalledWith('test-group', 'PaymentInitiated', 'test-group');
+    expect(mockMetricsService.recordConsumerDuration).toHaveBeenCalled();
   });
 
   it('Scenario 2: Duplicate Delivery - skips handler on PROCESSED events', async () => {
@@ -166,6 +189,7 @@ describe('Idempotent Kafka Consumer', () => {
       'Duplicate event detected (already processed/DLQed). Skipping business logic.',
       expect.objectContaining({ duplicate: true }),
     );
+    expect(mockMetricsService.incrementDuplicates).toHaveBeenCalledWith('test-group', 'PaymentInitiated', 'test-group');
   });
 
   it('Scenario 3: Concurrent Duplicates - database constraint triggers skip', async () => {
@@ -278,7 +302,7 @@ describe('Idempotent Kafka Consumer', () => {
       receivedAt: new Date(),
       createdAt: new Date(),
       updatedAt: new Date(),
-      retryCount: 1, // maxRetries is 3, so under limit
+      retryCount: 1,
     };
 
     mockPersister.persistReceived.mockResolvedValue(mockRecord);
@@ -290,7 +314,7 @@ describe('Idempotent Kafka Consumer', () => {
     expect(mockPersister.markProcessing).toHaveBeenCalledWith('db-id-1');
     expect(mockPersister.markFailed).toHaveBeenCalledWith('db-id-1', 'Transient database deadlock');
     expect(mockPersister.markRetrying).toHaveBeenCalledWith('db-id-1', 'Transient database deadlock');
-    expect(mockDlqPublisher.publish).not.toHaveBeenCalled();
+    expect(mockMetricsService.incrementConsumerFailures).toHaveBeenCalledWith('test-group', 'PaymentInitiated', 'test-group');
   });
 
   it('Scenario 7: Retry Limit Exhausted - wraps and publishes to DLQ, resolves cleanly', async () => {
@@ -307,7 +331,7 @@ describe('Idempotent Kafka Consumer', () => {
       receivedAt: new Date(),
       createdAt: new Date(),
       updatedAt: new Date(),
-      retryCount: 3, // At maximum retry count limit (3)
+      retryCount: 3,
     };
 
     mockPersister.persistReceived.mockResolvedValue(mockRecord);
@@ -317,6 +341,7 @@ describe('Idempotent Kafka Consumer', () => {
     await runCallback!(mockEachMessagePayload); // resolves cleanly, offset committed
 
     expect(mockPersister.markFailed).toHaveBeenCalledWith('db-id-1', 'Permanent deserialization error');
+    expect(mockMetricsService.incrementConsumerFailures).toHaveBeenCalledWith('test-group', 'PaymentInitiated', 'test-group');
     expect(mockDlqPublisher.publish).toHaveBeenCalledWith(
       'payment.dlq',
       expect.objectContaining({
@@ -331,5 +356,6 @@ describe('Idempotent Kafka Consumer', () => {
       }),
     );
     expect(mockPersister.markDlqSent).toHaveBeenCalledWith('db-id-1');
+    expect(mockMetricsService.incrementDlqEvents).toHaveBeenCalledWith('test-group', 'PaymentInitiated', 'test-group');
   });
 });

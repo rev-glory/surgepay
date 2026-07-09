@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { LoggerModule } from '@surgepay/common';
+import { LoggerModule, MetricsModule } from '@surgepay/common';
 import { ConfigModule } from '@surgepay/config';
 import { MessagingModule } from '@surgepay/common-messaging';
 
@@ -12,6 +12,7 @@ import { InboxService } from './inbox/inbox.service';
     ConfigModule,
     LoggerModule,
     MessagingModule,
+    MetricsModule,
   ],
   providers: [
     PrismaService,
