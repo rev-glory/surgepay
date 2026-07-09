@@ -15,4 +15,10 @@ export default registerAs('outbox', (): OutboxConfig => ({
   retryLimit: process.env.OUTBOX_RETRY_LIMIT
     ? parseInt(process.env.OUTBOX_RETRY_LIMIT, 10)
     : 3,
+  maxInFlight: process.env.OUTBOX_MAX_IN_FLIGHT
+    ? parseInt(process.env.OUTBOX_MAX_IN_FLIGHT, 10)
+    : 1000,
+  flushInterval: process.env.OUTBOX_FLUSH_INTERVAL
+    ? parseInt(process.env.OUTBOX_FLUSH_INTERVAL, 10)
+    : 100,
 }));

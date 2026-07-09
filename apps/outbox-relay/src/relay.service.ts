@@ -6,9 +6,12 @@ import { Poller } from './poller';
 import { PrismaService } from './prisma.service';
 import { OutboxPublisher } from './publisher';
 import { RelayMetrics } from './metrics.service';
+import { BackpressureController } from './backpressure';
 
 @Injectable()
 export class RelayService {
+  private readonly backpressure: BackpressureController;
+
   constructor(
     private readonly prismaService: PrismaService,
     private readonly poller: Poller,
@@ -18,18 +21,30 @@ export class RelayService {
     private readonly metrics: RelayMetrics,
   ) {
     this.logger.setContext('RelayService');
+    const maxInFlight = this.configService.outbox.maxInFlight || 1000;
+    this.backpressure = new BackpressureController(maxInFlight);
+  }
+
+  private getTopicName(eventType: string): string {
+    if (eventType === 'PaymentInitiated') {
+      return 'payments.initiated';
+    }
+    return 'saga.commands';
   }
 
   /**
    * Runs a single polling and processing cycle.
-   * Claims pending/retrying events in one quick transaction, then publishes and transitions state for each event.
+   * Claims pending/retrying events in one quick transaction, then publishes and transitions state for batches.
    */
   async runOnce(): Promise<void> {
     const startTime = Date.now();
     const batchSize = this.configService.outbox.batchSize;
     const publishTimeout = this.configService.outbox.publishTimeout;
 
-    this.logger.debug('Starting outbox relay polling cycle', { batchSize });
+    // Fetch up to 10 batches to process concurrently
+    const dbPollLimit = batchSize * 10;
+
+    this.logger.debug('Starting outbox relay polling cycle', { batchSize, dbPollLimit });
 
     // Track gauge metrics of Outbox database state
     try {
@@ -71,7 +86,7 @@ export class RelayService {
       // 1. Discover and claim work inside a short transaction, transitioning records to PUBLISHING
       const events = await this.prismaService.client.$transaction(
         async (tx) => {
-          const pending = await this.poller.pollPending(tx, batchSize);
+          const pending = await this.poller.pollPending(tx, dbPollLimit);
           if (!pending || pending.length === 0) {
             return [];
           }
@@ -96,131 +111,124 @@ export class RelayService {
       processedCount = events.length;
       this.logger.info('Discovered and claimed outbox events', { count: events.length });
 
-      for (const event of events) {
-        // Propagate Request ID and Correlation ID context in all log statements using RequestContext
-        await RequestContext.run(
-          {
-            requestId: event.requestId,
-            correlationId: event.correlationId,
-            eventId: event.id,
-          },
-          async () => {
-            this.logger.info('Processing outbox event', {
-              eventId: event.id,
-              eventType: event.eventType,
-            });
+      // Chunk the claimed events into sub-batches of size batchSize
+      const chunks: typeof events[] = [];
+      for (let i = 0; i < events.length; i += batchSize) {
+        chunks.push(events.slice(i, i + batchSize));
+      }
 
-            const eventStartTime = Date.now();
+      // Publish chunks concurrently with back-pressure constraints
+      const publishPromises = chunks.map(async (subBatch) => {
+        await this.backpressure.acquire(subBatch.length);
+        this.metrics.setRelayInFlight(this.backpressure.getActiveMessagesCount());
 
-            try {
-              // 2. Publish Event to Kafka
-              const metadata = await this.publisher.publish(event);
+        const subBatchStartTime = Date.now();
+        try {
+          // 2. Publish Event Batch to Kafka
+          const metadataList = await this.publisher.publishBatch(subBatch);
 
-              // 3. Extract Broker ACK metadata directly from the returned RecordMetadata
-              const ack = metadata[0];
-              const topic = ack?.topicName ?? event.eventType;
+          // 3. Update status to PUBLISHED for all events individually inside a transaction
+          await this.prismaService.client.$transaction(async (tx) => {
+            for (const event of subBatch) {
+              const ack = metadataList.find((m) => m.topicName === this.getTopicName(event.eventType)) || metadataList[0];
+              const topic = ack?.topicName ?? this.getTopicName(event.eventType);
               const partition = ack?.partition ?? 0;
               const offset = ack?.offset ?? '0';
 
-              // 4. Update status to PUBLISHED along with broker metadata
+              await tx.outboxEvent.update({
+                where: { id: event.id },
+                data: {
+                  status: 'PUBLISHED',
+                  publishedAt: new Date(),
+                  topic,
+                  partition,
+                  offset,
+                },
+              });
+            }
+          });
+
+          const lag = Date.now() - subBatch[0]!.createdAt.getTime();
+          const duration = Date.now() - subBatchStartTime;
+
+          this.metrics.recordRelayBatchSize(subBatch.length);
+          this.metrics.recordRelayPublishDuration(duration);
+
+          for (const event of subBatch) {
+            this.metrics.recordOutboxLag(event.createdAt);
+            this.metrics.recordPublishSuccess(event.eventType);
+
+            this.logger.info('Successfully published outbox event', {
+              outboxId: event.id,
+              eventId: event.id,
+              eventType: event.eventType,
+              correlationId: event.correlationId,
+              currentState: 'PUBLISHING',
+              nextState: 'PUBLISHED',
+              retryCount: event.retryCount,
+              publishDurationMs: duration,
+              publishLagMs: lag,
+            });
+          }
+        } catch (err) {
+          const duration = Date.now() - subBatchStartTime;
+          const errorMsg = err instanceof Error ? err.message : String(err);
+
+          this.logger.error('Failed to publish outbox event batch, initiating failure transitions', err, {
+            batchSize: subBatch.length,
+            durationMs: duration,
+          });
+
+          for (const event of subBatch) {
+            this.metrics.recordPublishFailure(event.eventType, true, event.retryCount + 1);
+
+            try {
+              // 4. Persist intermediate state transition: FAILED
               await this.prismaService.client.$transaction(async (tx) => {
                 await tx.outboxEvent.update({
                   where: { id: event.id },
                   data: {
-                    status: 'PUBLISHED',
-                    publishedAt: new Date(),
-                    topic,
-                    partition,
-                    offset,
+                    status: 'FAILED',
                   },
                 });
               });
 
-              const lag = Date.now() - event.createdAt.getTime();
-              const duration = Date.now() - eventStartTime;
+              // 5. Transition to RETRYING, increment retryCount, write lastError, lastAttemptAt
+              await this.prismaService.client.$transaction(async (tx) => {
+                await tx.outboxEvent.update({
+                  where: { id: event.id },
+                  data: {
+                    status: 'RETRYING',
+                    retryCount: { increment: 1 },
+                    lastError: errorMsg,
+                    lastAttemptAt: new Date(),
+                  },
+                });
+              });
 
-              this.metrics.recordOutboxLag(event.createdAt);
-              this.metrics.recordPublishSuccess(event.eventType);
-
-              this.logger.info('Successfully published outbox event', {
+              this.logger.info('Successfully transitioned and committed state to RETRYING', {
                 outboxId: event.id,
                 eventId: event.id,
                 eventType: event.eventType,
                 correlationId: event.correlationId,
                 currentState: 'PUBLISHING',
-                nextState: 'PUBLISHED',
-                retryCount: event.retryCount,
-                topic,
-                partition,
-                offset,
-                publishDurationMs: duration,
-                publishLagMs: lag,
+                nextState: 'RETRYING',
+                retryCount: event.retryCount + 1,
               });
-            } catch (err) {
-              const duration = Date.now() - eventStartTime;
-              const errorMsg = err instanceof Error ? err.message : String(err);
-
-              this.logger.error('Failed to publish outbox event, initiating failure transitions', err, {
+            } catch (dbErr) {
+              this.logger.error('Critical database error during failure state transitions persistence', dbErr, {
                 outboxId: event.id,
                 eventId: event.id,
-                eventType: event.eventType,
-                correlationId: event.correlationId,
-                currentState: 'PUBLISHING',
-                nextState: 'FAILED',
-                retryCount: event.retryCount,
-                publishDurationMs: duration,
               });
-
-              this.metrics.recordPublishFailure(event.eventType, true, event.retryCount + 1);
-
-              try {
-                // 5. Persist intermediate state transition: FAILED
-                await this.prismaService.client.$transaction(async (tx) => {
-                  await tx.outboxEvent.update({
-                    where: { id: event.id },
-                    data: {
-                      status: 'FAILED',
-                    },
-                  });
-                });
-
-                this.logger.info('Persisted intermediate state FAILED', {
-                  outboxId: event.id,
-                  eventId: event.id,
-                });
-
-                // 6. Transition to RETRYING, increment retryCount, write lastError, lastAttemptAt
-                await this.prismaService.client.$transaction(async (tx) => {
-                  await tx.outboxEvent.update({
-                    where: { id: event.id },
-                    data: {
-                      status: 'RETRYING',
-                      retryCount: { increment: 1 },
-                      lastError: errorMsg,
-                      lastAttemptAt: new Date(),
-                    },
-                  });
-                });
-
-                this.logger.info('Successfully transitioned and committed state to RETRYING', {
-                  outboxId: event.id,
-                  eventId: event.id,
-                  eventType: event.eventType,
-                  correlationId: event.correlationId,
-                  currentState: 'FAILED',
-                  nextState: 'RETRYING',
-                  retryCount: event.retryCount + 1,
-                });
-              } catch (dbErr) {
-                this.logger.error('Critical database error during failure state transitions persistence', dbErr, {
-                  outboxId: event.id,
-                  eventId: event.id,
-                });
-              }
             }
-          },
-        );
-      }
+          }
+        } finally {
+          this.backpressure.release(subBatch.length);
+          this.metrics.setRelayInFlight(this.backpressure.getActiveMessagesCount());
+        }
+      });
+
+      await Promise.all(publishPromises);
     } catch (err) {
       this.logger.error('Error occurred during outbox relay processing cycle', err);
     } finally {

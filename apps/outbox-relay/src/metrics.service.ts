@@ -17,6 +17,21 @@ export class RelayMetrics {
     // Operational logging
   }
 
+  recordRelayBatchSize(size: number): void {
+    const serviceName = process.env.APP_NAME || 'outbox-relay';
+    this.sharedMetrics.recordRelayBatchSize(serviceName, size);
+  }
+
+  recordRelayPublishDuration(durationMs: number): void {
+    const serviceName = process.env.APP_NAME || 'outbox-relay';
+    this.sharedMetrics.recordRelayPublishDuration(serviceName, durationMs);
+  }
+
+  setRelayInFlight(count: number): void {
+    const serviceName = process.env.APP_NAME || 'outbox-relay';
+    this.sharedMetrics.setRelayInFlight(serviceName, count);
+  }
+
   /**
    * Records a successful event publication and its latency.
    */

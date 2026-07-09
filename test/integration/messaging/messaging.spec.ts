@@ -127,7 +127,7 @@ async function fetchLastMessageFromTopic(kafka: Kafka, topic: string): Promise<a
   let result: any = null;
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
-      consumer.disconnect().then(resolve).catch(reject);
+      resolve();
     }, 8000);
 
     consumer.run({
@@ -136,7 +136,6 @@ async function fetchLastMessageFromTopic(kafka: Kafka, topic: string): Promise<a
           try {
             result = JSON.parse(message.value.toString());
             clearTimeout(timeout);
-            await consumer.disconnect();
             resolve();
           } catch (err) {
             reject(err);
@@ -145,6 +144,12 @@ async function fetchLastMessageFromTopic(kafka: Kafka, topic: string): Promise<a
       }
     }).catch(reject);
   });
+  
+  try {
+    await consumer.disconnect();
+  } catch (err) {
+    // Ignore disconnect errors
+  }
   
   return result;
 }
@@ -324,7 +329,7 @@ describe('Messaging System Integration', () => {
       },
     };
 
-    const logger = appModule.get(LoggerService);
+    const logger = await appModule.resolve(LoggerService);
     const metrics = appModule.get(MetricsService);
     const dlqPublisher = appModule.get(KafkaDlqPublisher);
     const persister = new TestInboxPersister(ledgerPrisma, 'ledger-service');
@@ -341,6 +346,7 @@ describe('Messaging System Integration', () => {
         topics: ['payments.initiated'],
         dlqTopic: 'payment.dlq',
         maxRetries: 3,
+        fromBeginning: false,
       }
     );
 
@@ -387,7 +393,7 @@ describe('Messaging System Integration', () => {
       },
     };
 
-    const logger = appModule.get(LoggerService);
+    const logger = await appModule.resolve(LoggerService);
     const metrics = appModule.get(MetricsService);
     const dlqPublisher = appModule.get(KafkaDlqPublisher);
     const persister = new TestInboxPersister(ledgerPrisma, 'duplicate-service');
@@ -404,6 +410,7 @@ describe('Messaging System Integration', () => {
         topics: ['payments.initiated'],
         dlqTopic: 'payment.dlq',
         maxRetries: 3,
+        fromBeginning: false,
       }
     );
 
@@ -541,7 +548,7 @@ describe('Messaging System Integration', () => {
       },
     };
 
-    const logger = appModule.get(LoggerService);
+    const logger = await appModule.resolve(LoggerService);
     const metrics = appModule.get(MetricsService);
     const dlqPublisher = appModule.get(KafkaDlqPublisher);
     const persister = new TestInboxPersister(ledgerPrisma, 'dlq-test-service');
@@ -558,6 +565,7 @@ describe('Messaging System Integration', () => {
         topics: ['payments.initiated'],
         dlqTopic: 'payment.dlq',
         maxRetries: 2,
+        fromBeginning: false,
       }
     );
 

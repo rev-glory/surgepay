@@ -32,4 +32,8 @@ export class ProducerService implements IProducer, OnModuleInit, OnModuleDestroy
   async publish<T = any>(topic: string, event: BaseEventEnvelope<T>): Promise<RecordMetadata[]> {
     return this.kafkaProducer.publish(topic, event);
   }
+
+  async publishBatch(messages: Array<{ topic: string; event: BaseEventEnvelope<any> }>): Promise<RecordMetadata[]> {
+    return this.kafkaProducer.publishBatch(messages);
+  }
 }

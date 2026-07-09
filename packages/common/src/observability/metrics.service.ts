@@ -21,6 +21,10 @@ export class MetricsService {
   private readonly publishedEvents: Gauge;
   private readonly failedEvents: Gauge;
 
+  private readonly relayBatchSize: Histogram;
+  private readonly relayPublishDuration: Histogram;
+  private readonly relayInFlight: Gauge;
+
   private readonly receivedEvents: Counter;
   private readonly processedEvents: Counter;
   private readonly dlqEvents: Counter;
@@ -85,6 +89,22 @@ export class MetricsService {
       OUTBOX_METRICS.FAILED,
       'Current number of permanently failed outbox events',
       ['service', 'eventType'],
+    );
+
+    this.relayBatchSize = this.getOrCreateHistogram(
+      OUTBOX_METRICS.BATCH_SIZE,
+      'Distribution of Outbox Relay batch sizes',
+      ['service'],
+    );
+    this.relayPublishDuration = this.getOrCreateHistogram(
+      OUTBOX_METRICS.PUBLISH_DURATION,
+      'Publish duration for Outbox Relay batches in ms',
+      ['service'],
+    );
+    this.relayInFlight = this.getOrCreateGauge(
+      OUTBOX_METRICS.IN_FLIGHT,
+      'Current number of in-flight messages in Outbox Relay',
+      ['service'],
     );
 
     // Inbox Metrics
@@ -168,6 +188,18 @@ export class MetricsService {
 
   setFailedEvents(service: string, eventType: string, count: number): void {
     this.failedEvents.set({ service, eventType }, count);
+  }
+
+  recordRelayBatchSize(service: string, size: number): void {
+    this.relayBatchSize.observe({ service }, size);
+  }
+
+  recordRelayPublishDuration(service: string, durationMs: number): void {
+    this.relayPublishDuration.observe({ service }, durationMs);
+  }
+
+  setRelayInFlight(service: string, count: number): void {
+    this.relayInFlight.set({ service }, count);
   }
 
   // Inbox instrumentation

@@ -8,6 +8,7 @@ import { OutboxEvent } from '../../payment-service/src/generated/client';
 
 export abstract class OutboxPublisher {
   abstract publish(event: OutboxEvent): Promise<RecordMetadata[]>;
+  abstract publishBatch(events: OutboxEvent[]): Promise<RecordMetadata[]>;
 }
 
 @Injectable()
@@ -32,6 +33,18 @@ export class ConsolePublisher implements OutboxPublisher {
         errorCode: 0,
       },
     ];
+  }
+
+  async publishBatch(events: OutboxEvent[]): Promise<RecordMetadata[]> {
+    this.logger.info('Simulating publishing outbox event batch to messaging system', {
+      count: events.length,
+    });
+    return events.map((event) => ({
+      topicName: event.eventType === 'PaymentInitiated' ? TOPICS.PAYMENTS_INITIATED : TOPICS.SAGA_COMMANDS,
+      partition: 0,
+      offset: '0',
+      errorCode: 0,
+    }));
   }
 }
 
@@ -70,5 +83,28 @@ export class KafkaPublisher implements OutboxPublisher {
     });
 
     return this.producerService.publish(topic, envelope);
+  }
+
+  async publishBatch(events: OutboxEvent[]): Promise<RecordMetadata[]> {
+    if (events.length === 0) return [];
+
+    const messages = events.map((event) => {
+      const envelope = event.payload as unknown as BaseEventEnvelope<unknown>;
+      let topic: string;
+      if (event.eventType === 'PaymentInitiated') {
+        topic = TOPICS.PAYMENTS_INITIATED;
+      } else if (event.eventType.endsWith('Command')) {
+        topic = TOPICS.SAGA_COMMANDS;
+      } else {
+        this.logger.warn('Unknown eventType mapping; defaulting to saga commands topic', {
+          eventType: event.eventType,
+          eventId: event.id,
+        });
+        topic = TOPICS.SAGA_COMMANDS;
+      }
+      return { topic, event: envelope };
+    });
+
+    return this.producerService.publishBatch(messages);
   }
 }

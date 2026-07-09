@@ -20,6 +20,7 @@ describe('RelayService', () => {
     };
     const mockPublisher = {
       publish: jest.fn(),
+      publishBatch: jest.fn(),
     };
     const mockPrismaService = {
       client: {
@@ -38,6 +39,7 @@ describe('RelayService', () => {
       outbox: {
         batchSize: 100,
         publishTimeout: 5000,
+        maxInFlight: 1000,
       },
     };
     const mockLogger = {
@@ -55,6 +57,9 @@ describe('RelayService', () => {
       recordPendingCount: jest.fn(),
       recordPublishedCount: jest.fn(),
       recordFailedCount: jest.fn(),
+      recordRelayBatchSize: jest.fn(),
+      recordRelayPublishDuration: jest.fn(),
+      setRelayInFlight: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -85,7 +90,7 @@ describe('RelayService', () => {
       status: 'PENDING' as const,
       requestId: 'req-id',
       correlationId: 'corr-id',
-      causationId: 'caus-id',
+      causationId: 'ca-id',
       createdAt: new Date(),
       publishedAt: null,
       retryCount: 0,
@@ -97,7 +102,7 @@ describe('RelayService', () => {
     };
 
     poller.pollPending.mockResolvedValue([mockEvent]);
-    publisher.publish.mockResolvedValue([
+    publisher.publishBatch.mockResolvedValue([
       {
         topicName: 'payments.initiated',
         partition: 0,
@@ -109,7 +114,7 @@ describe('RelayService', () => {
     await relayService.runOnce();
 
     expect(poller.pollPending).toHaveBeenCalled();
-    expect(publisher.publish).toHaveBeenCalledWith(mockEvent);
+    expect(publisher.publishBatch).toHaveBeenCalledWith([mockEvent]);
     expect(prismaService.client.outboxEvent.updateMany).toHaveBeenCalled();
     expect(prismaService.client.outboxEvent.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -130,6 +135,6 @@ describe('RelayService', () => {
     await relayService.runOnce();
 
     expect(poller.pollPending).toHaveBeenCalled();
-    expect(publisher.publish).not.toHaveBeenCalled();
+    expect(publisher.publishBatch).not.toHaveBeenCalled();
   });
 });
