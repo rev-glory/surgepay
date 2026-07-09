@@ -383,12 +383,18 @@ importers:
       '@surgepay/common':
         specifier: workspace:*
         version: link:../../packages/common
+      '@surgepay/common-messaging':
+        specifier: workspace:*
+        version: link:../../packages/common/messaging
       '@surgepay/config':
         specifier: workspace:*
         version: link:../../packages/config
       '@surgepay/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@surgepay/events':
+        specifier: workspace:*
+        version: link:../../packages/events
       class-transformer:
         specifier: ^0.5.1
         version: 0.5.1
@@ -590,6 +596,37 @@ importers:
       axios:
         specifier: ^1.18.1
         version: 1.18.1
+      rxjs:
+        specifier: ^7.8.1
+        version: 7.8.2
+      tslib:
+        specifier: ^2.6.2
+        version: 2.8.1
+    devDependencies:
+      '@types/node':
+        specifier: ^22.7.5
+        version: 22.20.0
+
+  packages/common/messaging:
+    dependencies:
+      '@nestjs/common':
+        specifier: ^10.4.15
+        version: 10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/core':
+        specifier: ^10.4.15
+        version: 10.4.22(@nestjs/common@10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@10.4.22)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@surgepay/common':
+        specifier: workspace:*
+        version: link:..
+      '@surgepay/config':
+        specifier: workspace:*
+        version: link:../../config
+      '@surgepay/events':
+        specifier: workspace:*
+        version: link:../../events
+      kafkajs:
+        specifier: ^2.2.4
+        version: 2.2.4
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2

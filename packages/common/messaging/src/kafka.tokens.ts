@@ -1,0 +1,3 @@
+export const KAFKA_PRODUCER = Symbol('KAFKA_PRODUCER');
+export const KAFKA_PRODUCER_OPTIONS = Symbol('KAFKA_PRODUCER_OPTIONS');
+export const EVENT_SERIALIZER = Symbol('EVENT_SERIALIZER');

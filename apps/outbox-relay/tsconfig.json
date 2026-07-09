@@ -9,7 +9,11 @@
       "@surgepay/common": ["../../packages/common/dist/index"],
       "@surgepay/common/*": ["../../packages/common/dist/*"],
       "@surgepay/config": ["../../packages/config/dist/index"],
-      "@surgepay/config/*": ["../../packages/config/dist/*"]
+      "@surgepay/config/*": ["../../packages/config/dist/*"],
+      "@surgepay/common-messaging": ["../../packages/common/messaging/dist/index"],
+      "@surgepay/common-messaging/*": ["../../packages/common/messaging/dist/*"],
+      "@surgepay/events": ["../../packages/events/dist/index"],
+      "@surgepay/events/*": ["../../packages/events/dist/*"]
     }
   },
   "include": ["src/**/*"],
