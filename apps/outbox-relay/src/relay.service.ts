@@ -21,8 +21,8 @@ export class RelayService {
   }
 
   /**
-   * Runs a single polling and processing cycle inside a database transaction.
-   * Acquires row locks using SKIP LOCKED and invokes the publisher for each pending event.
+   * Runs a single polling and processing cycle.
+   * Claims pending/retrying events in one quick transaction, then publishes and transitions state for each event.
    */
   async runOnce(): Promise<void> {
     const startTime = Date.now();
@@ -34,62 +34,159 @@ export class RelayService {
     let processedCount = 0;
 
     try {
-      // Execute the entire polling and publishing inside a Prisma transaction
-      // to keep row locks active while the publisher runs.
-      await this.prismaService.client.$transaction(
+      // 1. Discover and claim work inside a short transaction, transitioning records to PUBLISHING
+      const events = await this.prismaService.client.$transaction(
         async (tx) => {
-          const events = await this.poller.pollPending(tx, batchSize);
-
-          if (!events || events.length === 0) {
-            return;
+          const pending = await this.poller.pollPending(tx, batchSize);
+          if (!pending || pending.length === 0) {
+            return [];
           }
 
-          processedCount = events.length;
-          this.logger.info('Discovered pending outbox events', { count: events.length });
+          // Mark status = PUBLISHING to prevent concurrent workers from claiming these records
+          await tx.outboxEvent.updateMany({
+            where: { id: { in: pending.map((e) => e.id) } },
+            data: { status: 'PUBLISHING' },
+          });
 
-          for (const event of events) {
-            // Propagate Request ID and Correlation ID context in all log statements using RequestContext
-            await RequestContext.run(
-              {
-                requestId: event.requestId,
-                correlationId: event.correlationId,
-                eventId: event.id,
-              },
-              async () => {
-                this.logger.info('Processing outbox event', {
-                  eventId: event.id,
-                  eventType: event.eventType,
-                });
-
-                try {
-                  await this.publisher.publish(event);
-
-                  const lag = Date.now() - event.createdAt.getTime();
-                  this.metrics.recordOutboxLag(event.createdAt);
-                  this.metrics.recordPublishSuccess(event.eventType);
-
-                  this.logger.info('Successfully processed and published outbox event', {
-                    eventId: event.id,
-                    eventType: event.eventType,
-                    publishLagMs: lag,
-                  });
-                } catch (err) {
-                  this.metrics.recordPublishFailure(event.eventType, true);
-                  this.logger.error('Failed to publish outbox event', err, {
-                    eventId: event.id,
-                    eventType: event.eventType,
-                  });
-                  // Re-throw to rollback transaction and release locks for other workers to retry
-                  throw err;
-                }
-              },
-            );
-          }
+          return pending;
         },
         {
           timeout: publishTimeout,
         },
       );
+
+      if (!events || events.length === 0) {
+        return;
+      }
+
+      processedCount = events.length;
+      this.logger.info('Discovered and claimed outbox events', { count: events.length });
+
+      for (const event of events) {
+        // Propagate Request ID and Correlation ID context in all log statements using RequestContext
+        await RequestContext.run(
+          {
+            requestId: event.requestId,
+            correlationId: event.correlationId,
+            eventId: event.id,
+          },
+          async () => {
+            this.logger.info('Processing outbox event', {
+              eventId: event.id,
+              eventType: event.eventType,
+            });
+
+            const eventStartTime = Date.now();
+
+            try {
+              // 2. Publish Event to Kafka
+              const metadata = await this.publisher.publish(event);
+
+              // 3. Extract Broker ACK metadata directly from the returned RecordMetadata
+              const ack = metadata[0];
+              const topic = ack?.topicName ?? event.eventType;
+              const partition = ack?.partition ?? 0;
+              const offset = ack?.offset ?? '0';
+
+              // 4. Update status to PUBLISHED along with broker metadata
+              await this.prismaService.client.$transaction(async (tx) => {
+                await tx.outboxEvent.update({
+                  where: { id: event.id },
+                  data: {
+                    status: 'PUBLISHED',
+                    publishedAt: new Date(),
+                    topic,
+                    partition,
+                    offset,
+                  },
+                });
+              });
+
+              const lag = Date.now() - event.createdAt.getTime();
+              const duration = Date.now() - eventStartTime;
+
+              this.metrics.recordOutboxLag(event.createdAt);
+              this.metrics.recordPublishSuccess(event.eventType);
+
+              this.logger.info('Successfully published outbox event', {
+                outboxId: event.id,
+                eventId: event.id,
+                eventType: event.eventType,
+                correlationId: event.correlationId,
+                currentState: 'PUBLISHING',
+                nextState: 'PUBLISHED',
+                retryCount: event.retryCount,
+                topic,
+                partition,
+                offset,
+                publishDurationMs: duration,
+                publishLagMs: lag,
+              });
+            } catch (err) {
+              const duration = Date.now() - eventStartTime;
+              const errorMsg = err instanceof Error ? err.message : String(err);
+
+              this.logger.error('Failed to publish outbox event, initiating failure transitions', err, {
+                outboxId: event.id,
+                eventId: event.id,
+                eventType: event.eventType,
+                correlationId: event.correlationId,
+                currentState: 'PUBLISHING',
+                nextState: 'FAILED',
+                retryCount: event.retryCount,
+                publishDurationMs: duration,
+              });
+
+              this.metrics.recordPublishFailure(event.eventType, true);
+
+              try {
+                // 5. Persist intermediate state transition: FAILED
+                await this.prismaService.client.$transaction(async (tx) => {
+                  await tx.outboxEvent.update({
+                    where: { id: event.id },
+                    data: {
+                      status: 'FAILED',
+                    },
+                  });
+                });
+
+                this.logger.info('Persisted intermediate state FAILED', {
+                  outboxId: event.id,
+                  eventId: event.id,
+                });
+
+                // 6. Transition to RETRYING, increment retryCount, write lastError, lastAttemptAt
+                await this.prismaService.client.$transaction(async (tx) => {
+                  await tx.outboxEvent.update({
+                    where: { id: event.id },
+                    data: {
+                      status: 'RETRYING',
+                      retryCount: { increment: 1 },
+                      lastError: errorMsg,
+                      lastAttemptAt: new Date(),
+                    },
+                  });
+                });
+
+                this.logger.info('Successfully transitioned and committed state to RETRYING', {
+                  outboxId: event.id,
+                  eventId: event.id,
+                  eventType: event.eventType,
+                  correlationId: event.correlationId,
+                  currentState: 'FAILED',
+                  nextState: 'RETRYING',
+                  retryCount: event.retryCount + 1,
+                });
+              } catch (dbErr) {
+                this.logger.error('Critical database error during failure state transitions persistence', dbErr, {
+                  outboxId: event.id,
+                  eventId: event.id,
+                });
+              }
+            }
+          },
+        );
+      }
     } catch (err) {
       this.logger.error('Error occurred during outbox relay processing cycle', err);
     } finally {

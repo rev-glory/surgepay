@@ -1,9 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { LoggerService } from '@surgepay/common';
 
 @Injectable()
 export class RelayMetrics {
-  constructor(private readonly logger: LoggerService) {
+  constructor(@Inject(LoggerService) private readonly logger: LoggerService) {
     this.logger.setContext('RelayMetrics');
   }
 
@@ -15,16 +15,16 @@ export class RelayMetrics {
   }
 
   /**
-   * Records a successful event publication.
+   * Records a successful event publication and its latency.
    */
-  recordPublishSuccess(eventType: string): void {
+  recordPublishSuccess(eventType: string, latencyMs?: number): void {
     // Instrumentation hook placeholder for future Prometheus integration
   }
 
   /**
-   * Records a failed event publication.
+   * Records a failed event publication, tracking retries and transient flags.
    */
-  recordPublishFailure(eventType: string, isTransient: boolean): void {
+  recordPublishFailure(eventType: string, isTransient: boolean, retryCount?: number): void {
     // Instrumentation hook placeholder for future Prometheus integration
   }
 
@@ -32,6 +32,20 @@ export class RelayMetrics {
    * Records the latency (lag) between outbox entry insertion and publish completion.
    */
   recordOutboxLag(createdAt: Date): void {
+    // Instrumentation hook placeholder for future Prometheus integration
+  }
+
+  /**
+   * Records the current total of pending events awaiting execution.
+   */
+  recordPendingCount(count: number): void {
+    // Instrumentation hook placeholder for future Prometheus integration
+  }
+
+  /**
+   * Records the current total of permanently failed events.
+   */
+  recordFailedCount(count: number): void {
     // Instrumentation hook placeholder for future Prometheus integration
   }
 }

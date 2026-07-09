@@ -24,6 +24,10 @@ describe('RelayService', () => {
     const mockPrismaService = {
       client: {
         $transaction: jest.fn(),
+        outboxEvent: {
+          updateMany: jest.fn(),
+          update: jest.fn(),
+        },
       } as any,
     };
     mockPrismaService.client.$transaction.mockImplementation((callback: any) =>
@@ -47,6 +51,8 @@ describe('RelayService', () => {
       recordPublishSuccess: jest.fn(),
       recordPublishFailure: jest.fn(),
       recordOutboxLag: jest.fn(),
+      recordPendingCount: jest.fn(),
+      recordFailedCount: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -81,15 +87,39 @@ describe('RelayService', () => {
       createdAt: new Date(),
       publishedAt: null,
       retryCount: 0,
+      topic: null,
+      partition: null,
+      offset: null,
+      lastError: null,
+      lastAttemptAt: null,
     };
 
     poller.pollPending.mockResolvedValue([mockEvent]);
-    publisher.publish.mockResolvedValue();
+    publisher.publish.mockResolvedValue([
+      {
+        topicName: 'payments.initiated',
+        partition: 0,
+        offset: '42',
+        errorCode: 0,
+      },
+    ]);
 
     await relayService.runOnce();
 
     expect(poller.pollPending).toHaveBeenCalled();
     expect(publisher.publish).toHaveBeenCalledWith(mockEvent);
+    expect(prismaService.client.outboxEvent.updateMany).toHaveBeenCalled();
+    expect(prismaService.client.outboxEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: mockEvent.id },
+        data: expect.objectContaining({
+          status: 'PUBLISHED',
+          topic: 'payments.initiated',
+          partition: 0,
+          offset: '42',
+        }),
+      }),
+    );
   });
 
   it('should skip processing when no events are found', async () => {

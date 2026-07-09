@@ -2,11 +2,12 @@ import { Inject, Injectable } from '@nestjs/common';
 import { LoggerService } from '@surgepay/common';
 import { BaseEventEnvelope } from '@surgepay/events';
 import { ProducerService, TOPICS } from '@surgepay/common-messaging';
+import { RecordMetadata } from 'kafkajs';
 
 import { OutboxEvent } from '../../payment-service/src/generated/client';
 
 export abstract class OutboxPublisher {
-  abstract publish(event: OutboxEvent): Promise<void>;
+  abstract publish(event: OutboxEvent): Promise<RecordMetadata[]>;
 }
 
 @Injectable()
@@ -15,7 +16,7 @@ export class ConsolePublisher implements OutboxPublisher {
     this.logger.setContext('ConsolePublisher');
   }
 
-  async publish(event: OutboxEvent): Promise<void> {
+  async publish(event: OutboxEvent): Promise<RecordMetadata[]> {
     this.logger.info('Simulating publishing outbox event to messaging system', {
       eventId: event.id,
       eventType: event.eventType,
@@ -23,6 +24,14 @@ export class ConsolePublisher implements OutboxPublisher {
       causationId: event.causationId,
       requestId: event.requestId,
     });
+    return [
+      {
+        topicName: event.eventType === 'PaymentInitiated' ? TOPICS.PAYMENTS_INITIATED : TOPICS.SAGA_COMMANDS,
+        partition: 0,
+        offset: '0',
+        errorCode: 0,
+      },
+    ];
   }
 }
 
@@ -35,9 +44,9 @@ export class KafkaPublisher implements OutboxPublisher {
     this.logger.setContext('KafkaPublisher');
   }
 
-  async publish(event: OutboxEvent): Promise<void> {
+  async publish(event: OutboxEvent): Promise<RecordMetadata[]> {
     // The Outbox row's payload field already contains the pre-serialized event envelope
-    // as written by the origin service (e.g. Payment Service). We cast and forward it directly.
+    // as written by the origin service. We cast and forward it directly.
     const envelope = event.payload as unknown as BaseEventEnvelope<unknown>;
 
     // Resolve the appropriate topic based on event type
@@ -60,6 +69,6 @@ export class KafkaPublisher implements OutboxPublisher {
       topic,
     });
 
-    await this.producerService.publish(topic, envelope);
+    return this.producerService.publish(topic, envelope);
   }
 }

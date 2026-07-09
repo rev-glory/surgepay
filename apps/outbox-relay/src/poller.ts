@@ -15,7 +15,7 @@ export class Poller {
     // We execute a raw SQL query because FOR UPDATE SKIP LOCKED is not supported by Prisma's standard API
     // Quoting column and table names to handle mixed-case names correctly in PostgreSQL
     return tx.$queryRawUnsafe<OutboxEvent[]>(
-      `SELECT * FROM "OutboxEvent" WHERE "status" = 'PENDING' ORDER BY "createdAt" ASC LIMIT $1 FOR UPDATE SKIP LOCKED`,
+      `SELECT * FROM "OutboxEvent" WHERE "status" IN ('PENDING', 'RETRYING') ORDER BY "createdAt" ASC LIMIT $1 FOR UPDATE SKIP LOCKED`,
       batchSize,
     );
   }
