@@ -65,16 +65,16 @@ export async function setupE2EEnvironment() {
     process.env.DATABASE_URL = await pgContainerInstance.start();
 
     // Sync Prisma schema
-    execSync('npx prisma db push --schema=apps/merchant-service/prisma/schema.prisma', {
+    execSync('npx prisma db push --schema=apps/merchant-service/prisma/schema.prisma --skip-generate', {
       env: { ...process.env },
     });
-    execSync('npx prisma db push --schema=apps/payment-service/prisma/schema.prisma', {
+    execSync('npx prisma db push --schema=apps/payment-service/prisma/schema.prisma --skip-generate', {
       env: {
         ...process.env,
         DATABASE_URL: process.env.DATABASE_URL?.replace('schema=merchant', 'schema=payment'),
       },
     });
-    execSync('npx prisma db push --schema=packages/database/generated/ledger/schema.prisma', {
+    execSync('npx prisma db push --schema=packages/database/generated/ledger/schema.prisma --skip-generate', {
       env: {
         ...process.env,
         DATABASE_URL: process.env.DATABASE_URL?.replace('schema=merchant', 'schema=ledger'),

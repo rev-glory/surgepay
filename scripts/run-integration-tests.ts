@@ -47,21 +47,21 @@ async function main() {
     console.log('🔨 Running Prisma schema pushes to test database...');
     
     console.log('Syncing Merchant schema...');
-    execSync('npx prisma db push --schema=apps/merchant-service/prisma/schema.prisma', {
+    execSync('npx prisma db push --schema=apps/merchant-service/prisma/schema.prisma --skip-generate', {
       stdio: 'inherit',
       env: { ...process.env, DATABASE_URL: databaseUrl },
     });
 
     console.log('Syncing Payment/Outbox schema...');
     const paymentDatabaseUrl = databaseUrl.replace('schema=merchant', 'schema=payment');
-    execSync('npx prisma db push --schema=apps/payment-service/prisma/schema.prisma', {
+    execSync('npx prisma db push --schema=apps/payment-service/prisma/schema.prisma --skip-generate', {
       stdio: 'inherit',
       env: { ...process.env, DATABASE_URL: paymentDatabaseUrl },
     });
 
     console.log('Syncing Ledger/Inbox schema...');
     const ledgerDatabaseUrl = databaseUrl.replace('schema=merchant', 'schema=ledger');
-    execSync('npx prisma db push --schema=packages/database/generated/ledger/schema.prisma', {
+    execSync('npx prisma db push --schema=packages/database/generated/ledger/schema.prisma --skip-generate', {
       stdio: 'inherit',
       env: { ...process.env, DATABASE_URL: ledgerDatabaseUrl },
     });
