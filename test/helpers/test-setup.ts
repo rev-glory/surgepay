@@ -68,7 +68,7 @@ export async function setupE2EEnvironment() {
     execSync('npx prisma db push --schema=apps/merchant-service/prisma/schema.prisma', {
       env: { ...process.env },
     });
-    execSync('npx prisma db push --schema=apps/payment-service/src/generated/client/schema.prisma', {
+    execSync('npx prisma db push --schema=apps/payment-service/prisma/schema.prisma', {
       env: {
         ...process.env,
         DATABASE_URL: process.env.DATABASE_URL?.replace('schema=merchant', 'schema=payment'),

@@ -1,0 +1,74 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Payment {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  merchantId    String        @db.Uuid
+  amount        Int
+  currency      String
+  status        PaymentStatus @default(PENDING)
+  reference     String
+  requestId     String
+  correlationId String
+  causationId   String
+  createdBy     String
+  source        String
+  createdAt     DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime      @updatedAt @db.Timestamptz(6)
+
+  @@unique([merchantId, reference])
+  @@index([merchantId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([reference])
+  @@index([correlationId])
+  @@index([requestId])
+}
+
+enum OutboxStatus {
+  PENDING
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  RETRYING
+}
+
+model OutboxEvent {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  aggregateId   String       @db.Uuid
+  aggregateType String
+  eventType     String
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  requestId     String
+  correlationId String
+  causationId   String
+  createdAt     DateTime     @default(now()) @db.Timestamptz(6)
+  publishedAt   DateTime?    @db.Timestamptz(6)
+  retryCount    Int          @default(0)
+  topic         String?
+  partition     Int?
+  offset        String?
+  lastError     String?
+  lastAttemptAt DateTime?    @db.Timestamptz(6)
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([eventType])
+  @@index([correlationId])
+  @@index([requestId])
+}

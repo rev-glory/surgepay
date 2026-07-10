@@ -54,7 +54,7 @@ async function main() {
 
     console.log('Syncing Payment/Outbox schema...');
     const paymentDatabaseUrl = databaseUrl.replace('schema=merchant', 'schema=payment');
-    execSync('npx prisma db push --schema=apps/payment-service/src/generated/client/schema.prisma', {
+    execSync('npx prisma db push --schema=apps/payment-service/prisma/schema.prisma', {
       stdio: 'inherit',
       env: { ...process.env, DATABASE_URL: paymentDatabaseUrl },
     });
