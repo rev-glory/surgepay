@@ -8,8 +8,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
-    "clean": "rimraf dist",
+    "prisma:generate": "node scripts/generate-clients.js",
+    "build": "pnpm prisma:generate && tsc",
+    "clean": "rimraf dist generated tsconfig.tsbuildinfo",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write \"src/**/*.ts\""
   },
