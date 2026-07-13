@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+
 import { LoggerService } from '@surgepay/common';
 
 import { OutboxEvent, OutboxStatus } from '../generated/client';

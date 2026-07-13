@@ -1,3 +1,3 @@
-export * from './topics';
-export * from './serializer';
 export * from './producer';
+export * from './serializer';
+export * from './topics';

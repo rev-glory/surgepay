@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+
 import { LoggerService } from '@surgepay/common';
 import { ConfigService } from '@surgepay/config';
 

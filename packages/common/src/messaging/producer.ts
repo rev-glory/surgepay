@@ -1,11 +1,14 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@surgepay/config';
 import { CompressionTypes, Kafka, Producer, RecordMetadata } from 'kafkajs';
 
+import { ConfigService } from '@surgepay/config';
+import { BaseEventEnvelope } from '@surgepay/events';
+
 import { LoggerService } from '../logger';
+import { EventSerializer } from './serializer';
 
 export interface EventProducer {
-  publish(topic: string, key: string, value: Buffer): Promise<RecordMetadata[]>;
+  publish(topic: string, key: string, event: BaseEventEnvelope<unknown>): Promise<RecordMetadata[]>;
 }
 
 export const EVENT_PRODUCER = 'EVENT_PRODUCER';
@@ -57,8 +60,8 @@ export class KafkaEventProducer implements EventProducer, OnModuleInit, OnModule
     this.logger.info('Successfully disconnected from Redpanda/Kafka broker.');
   }
 
-  async publish(topic: string, key: string, value: Buffer): Promise<RecordMetadata[]> {
-    // raw publish call without logging event errors inside the producer
+  async publish(topic: string, key: string, event: BaseEventEnvelope<unknown>): Promise<RecordMetadata[]> {
+    const value = EventSerializer.serialize(event);
     return await this.producer.send({
       topic,
       acks: -1,

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
+
 import {
-  EventSerializer,
   KafkaEventProducer,
   LoggerService,
   TOPIC_REGISTRY,
@@ -82,25 +82,9 @@ export class KafkaOutboxPublisher implements EventPublisher {
       );
     }
 
-    let serialized: Buffer;
-    try {
-      serialized = EventSerializer.serialize(envelope);
-    } catch (err) {
-      throw new OutboxPublicationException(
-        `Serialization failed: ${err instanceof Error ? err.message : String(err)}`,
-        {
-          eventId: event.id,
-          eventType: event.eventType,
-          correlationId: event.correlationId,
-          topic,
-        },
-        err,
-      );
-    }
-
     try {
       // Kafka partition key decision using aggregateId (representing paymentId)
-      const metadata = await this.producer.publish(topic, event.aggregateId, serialized);
+      const metadata = await this.producer.publish(topic, event.aggregateId, envelope);
       const record = metadata[0];
       if (!record) {
         throw new Error('Kafka broker returned empty metadata array');
@@ -110,6 +94,26 @@ export class KafkaOutboxPublisher implements EventPublisher {
         offset: record.offset ?? '0',
       };
     } catch (err) {
+      // Catch validation or serialization exceptions thrown by EventSerializer internally
+      const isSerializationErr =
+        err instanceof Error &&
+        (err.name === 'SerializationException' ||
+          err.name === 'MalformedEventEnvelopeException' ||
+          err.name === 'UnsupportedEventVersionException');
+
+      if (isSerializationErr) {
+        throw new OutboxPublicationException(
+          `Serialization failed: ${(err as Error).message}`,
+          {
+            eventId: event.id,
+            eventType: event.eventType,
+            correlationId: event.correlationId,
+            topic,
+          },
+          err,
+        );
+      }
+
       throw new OutboxPublicationException(
         `Kafka publish failed: ${err instanceof Error ? err.message : String(err)}`,
         {
