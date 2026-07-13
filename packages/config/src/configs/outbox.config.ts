@@ -15,4 +15,10 @@ export default registerAs('outbox', (): OutboxConfig => ({
   publishTimeout: process.env.OUTBOX_PUBLISH_TIMEOUT
     ? parseInt(process.env.OUTBOX_PUBLISH_TIMEOUT, 10)
     : 5000,
+  retentionDays: process.env.OUTBOX_RETENTION_DAYS
+    ? parseInt(process.env.OUTBOX_RETENTION_DAYS, 10)
+    : 7,
+  staleTimeoutMs: process.env.OUTBOX_STALE_TIMEOUT
+    ? parseInt(process.env.OUTBOX_STALE_TIMEOUT, 10)
+    : 300000,
 }));

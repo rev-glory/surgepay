@@ -69,6 +69,8 @@ export interface OutboxConfig {
   batchSize: number;
   retryLimit: number;
   publishTimeout: number;
+  retentionDays: number;
+  staleTimeoutMs: number;
 }
 
 

@@ -7,7 +7,7 @@ module.exports = {
   rootDir: '.',
   testRegex: 'src/.*\\.spec\\.ts$',
   transform: {
-    '^.+\\.(t|j)s$': ['ts-jest', { tsconfig: './tsconfig.json' }],
+    '^.+\\.ts$': ['ts-jest', { tsconfig: './tsconfig.json' }],
   },
   moduleNameMapper: pathsToModuleNameMapper(compilerOptions.paths, { prefix: '<rootDir>/../../' }),
   testEnvironment: 'node',

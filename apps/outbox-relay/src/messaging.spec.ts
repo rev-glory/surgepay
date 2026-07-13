@@ -1,7 +1,7 @@
 import {
   EventSerializer,
   KafkaEventProducer,
-  type LoggerService,
+  LoggerService,
   SerializationException,
 } from '@surgepay/common';
 import type { ConfigService } from '@surgepay/config';
@@ -166,11 +166,16 @@ describe('Shared Messaging & Kafka Publisher Spec', () => {
       createdAt: new Date('2026-07-13T12:00:00Z'),
       publishedAt: null,
       retryCount: 0,
+      partition: null,
+      offset: null,
+      lastAttemptAt: null,
     });
 
     beforeEach(() => {
       mockProducer = {
-        publish: jest.fn().mockResolvedValue(undefined),
+        publish: jest.fn().mockResolvedValue([
+          { topicName: 'payments.initiated', partition: 2, offset: '1024' },
+        ]),
       } as unknown as jest.Mocked<KafkaEventProducer>;
 
       publisher = new KafkaOutboxPublisher(mockProducer);

@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-
 import {
   EventSerializer,
   KafkaEventProducer,
@@ -11,7 +10,7 @@ import type { BaseEventEnvelope } from '@surgepay/events';
 import type { OutboxEvent } from './generated/client';
 
 export interface EventPublisher {
-  publish(event: OutboxEvent): Promise<void>;
+  publish(event: OutboxEvent): Promise<{ partition: number; offset: string }>;
 }
 
 export const EVENT_PUBLISHER = 'EVENT_PUBLISHER';
@@ -45,7 +44,7 @@ export class ConsoleEventPublisher implements EventPublisher {
     this.logger.setContext('ConsoleEventPublisher');
   }
 
-  async publish(event: OutboxEvent): Promise<void> {
+  async publish(event: OutboxEvent): Promise<{ partition: number; offset: string }> {
     // Log delegation only. Do not claim durable publication to Kafka.
     this.logger.info('Event delegated to publisher boundary placeholder', {
       eventId: event.id,
@@ -55,6 +54,7 @@ export class ConsoleEventPublisher implements EventPublisher {
       requestId: event.requestId,
       causationId: event.causationId,
     });
+    return { partition: 0, offset: '0' };
   }
 }
 
@@ -62,7 +62,7 @@ export class ConsoleEventPublisher implements EventPublisher {
 export class KafkaOutboxPublisher implements EventPublisher {
   constructor(private readonly producer: KafkaEventProducer) {}
 
-  async publish(event: OutboxEvent): Promise<void> {
+  async publish(event: OutboxEvent): Promise<{ partition: number; offset: string }> {
     const envelope = event.payload as unknown as BaseEventEnvelope<unknown>;
 
     if (!envelope || typeof envelope !== 'object') {
@@ -100,7 +100,15 @@ export class KafkaOutboxPublisher implements EventPublisher {
 
     try {
       // Kafka partition key decision using aggregateId (representing paymentId)
-      await this.producer.publish(topic, event.aggregateId, serialized);
+      const metadata = await this.producer.publish(topic, event.aggregateId, serialized);
+      const record = metadata[0];
+      if (!record) {
+        throw new Error('Kafka broker returned empty metadata array');
+      }
+      return {
+        partition: record.partition,
+        offset: record.offset ?? '0',
+      };
     } catch (err) {
       throw new OutboxPublicationException(
         `Kafka publish failed: ${err instanceof Error ? err.message : String(err)}`,

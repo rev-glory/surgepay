@@ -10,6 +10,7 @@ generator client {
 
 enum OutboxStatus {
   PENDING
+  PUBLISHING
   PUBLISHED
   FAILED
   RETRYING
@@ -28,6 +29,9 @@ model OutboxEvent {
   createdAt     DateTime     @default(now()) @db.Timestamptz(6)
   publishedAt   DateTime?    @db.Timestamptz(6)
   retryCount    Int          @default(0)
+  partition     Int?
+  offset        String?
+  lastAttemptAt DateTime?    @db.Timestamptz(6)
 
   @@index([status])
   @@index([createdAt])
