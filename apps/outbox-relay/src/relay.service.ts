@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 
-import { LoggerService } from '@surgepay/common';
+import { LoggerService, MetricsService } from '@surgepay/common';
 import { ConfigService } from '@surgepay/config';
 
 import { OutboxPoller } from './poller';
@@ -15,6 +15,7 @@ export class OutboxRelayService {
     @Inject(EVENT_PUBLISHER) private readonly publisher: EventPublisher,
     private readonly config: ConfigService,
     private readonly logger: LoggerService,
+    private readonly metricsService: MetricsService,
   ) {
     this.logger.setContext('OutboxRelayService');
   }
@@ -28,6 +29,19 @@ export class OutboxRelayService {
     const staleTimeout = this.config.outbox.staleTimeoutMs;
     const retryLimit = this.config.outbox.retryLimit;
     const batchSize = this.config.outbox.batchSize;
+    const serviceName = this.config.logging.serviceName;
+
+    // Sync outbox gauges at start of cycle
+    try {
+      const pending = await this.outboxRepository.countPending();
+      const failed = await this.outboxRepository.countFailed();
+      const published = await this.outboxRepository.countPublished();
+      this.metricsService.setOutboxPending(serviceName, pending);
+      this.metricsService.setOutboxFailed(serviceName, failed);
+      this.metricsService.setOutboxPublished(serviceName, published);
+    } catch (gaugeErr) {
+      this.logger.error('Failed to sync outbox gauges', gaugeErr as Error);
+    }
 
     this.logger.debug('Polling cycle started', { batchSize });
 
@@ -52,6 +66,10 @@ export class OutboxRelayService {
       try {
         const metadata = await this.publisher.publish(event);
 
+        // Record outbox write-to-publish lag
+        const lagMs = Date.now() - event.createdAt.getTime();
+        this.metricsService.recordOutboxLag(serviceName, event.eventType, lagMs);
+
         // 4. Atomically record PUBLISHED state and broker metadata
         await this.outboxRepository.markPublished(event.id, metadata.partition, metadata.offset);
       } catch (err) {
@@ -71,6 +89,7 @@ export class OutboxRelayService {
           // Transition: FAILED -> RETRYING if within retry limits
           if (failedEvent.retryCount < retryLimit) {
             await this.outboxRepository.markRetrying(event.id);
+            this.metricsService.recordPublicationRetry(serviceName, event.eventType);
           } else {
             this.logger.error('Outbox event retry limit exhausted. Left in FAILED state.', {
               eventId: event.id,

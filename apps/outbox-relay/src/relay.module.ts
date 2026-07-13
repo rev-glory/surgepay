@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 
-import { KafkaEventProducer, LoggerModule } from '@surgepay/common';
+import { KafkaEventProducer, LoggerModule, MetricsModule } from '@surgepay/common';
 import { ConfigModule } from '@surgepay/config';
 
 import { OutboxPoller } from './poller';
@@ -14,6 +14,7 @@ import { OutboxScheduler } from './scheduler';
   imports: [
     ConfigModule,
     LoggerModule,
+    MetricsModule,
     PrismaModule,
   ],
   providers: [

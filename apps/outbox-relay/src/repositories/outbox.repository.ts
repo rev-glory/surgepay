@@ -187,4 +187,28 @@ export class OutboxRepository {
       }
     });
   }
+
+  async countPending(): Promise<number> {
+    return this.prisma.client.outboxEvent.count({
+      where: {
+        status: { in: [OutboxStatus.PENDING, OutboxStatus.RETRYING, OutboxStatus.PUBLISHING] },
+      },
+    });
+  }
+
+  async countFailed(): Promise<number> {
+    return this.prisma.client.outboxEvent.count({
+      where: {
+        status: OutboxStatus.FAILED,
+      },
+    });
+  }
+
+  async countPublished(): Promise<number> {
+    return this.prisma.client.outboxEvent.count({
+      where: {
+        status: OutboxStatus.PUBLISHED,
+      },
+    });
+  }
 }

@@ -1,6 +1,6 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 
-import { LoggerService } from '@surgepay/common';
+import { LoggerService, MetricsService } from '@surgepay/common';
 import { ConfigService } from '@surgepay/config';
 
 import { type OutboxEvent, OutboxStatus } from './generated/client';
@@ -16,6 +16,7 @@ describe('OutboxRelayService', () => {
   let publisher: jest.Mocked<EventPublisher>;
   let logger: jest.Mocked<LoggerService>;
   let config: jest.Mocked<ConfigService>;
+  let metricsService: jest.Mocked<MetricsService>;
 
   beforeEach(async () => {
     poller = {
@@ -27,6 +28,9 @@ describe('OutboxRelayService', () => {
       markPublished: jest.fn(),
       markFailed: jest.fn(),
       markRetrying: jest.fn(),
+      countPending: jest.fn().mockResolvedValue(1),
+      countFailed: jest.fn().mockResolvedValue(2),
+      countPublished: jest.fn().mockResolvedValue(3),
     } as unknown as jest.Mocked<OutboxRepository>;
 
     publisher = {
@@ -42,6 +46,9 @@ describe('OutboxRelayService', () => {
     } as unknown as jest.Mocked<LoggerService>;
 
     config = {
+      logging: {
+        serviceName: 'outbox-relay',
+      },
       outbox: {
         batchSize: 100,
         pollingInterval: 500,
@@ -51,6 +58,14 @@ describe('OutboxRelayService', () => {
       },
     } as unknown as jest.Mocked<ConfigService>;
 
+    metricsService = {
+      setOutboxPending: jest.fn(),
+      setOutboxPublished: jest.fn(),
+      setOutboxFailed: jest.fn(),
+      recordOutboxLag: jest.fn(),
+      recordPublicationRetry: jest.fn(),
+    } as unknown as jest.Mocked<MetricsService>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OutboxRelayService,
@@ -59,6 +74,7 @@ describe('OutboxRelayService', () => {
         { provide: EVENT_PUBLISHER, useValue: publisher },
         { provide: ConfigService, useValue: config },
         { provide: LoggerService, useValue: logger },
+        { provide: MetricsService, useValue: metricsService },
       ],
     }).compile();
 
@@ -91,6 +107,11 @@ describe('OutboxRelayService', () => {
     expect(poller.recoverStale).toHaveBeenCalledWith(300000, 3);
     expect(poller.pollPending).toHaveBeenCalledWith(100);
     expect(publisher.publish).not.toHaveBeenCalled();
+
+    // Verify gauges are synced
+    expect(metricsService.setOutboxPending).toHaveBeenCalledWith('outbox-relay', 1);
+    expect(metricsService.setOutboxFailed).toHaveBeenCalledWith('outbox-relay', 2);
+    expect(metricsService.setOutboxPublished).toHaveBeenCalledWith('outbox-relay', 3);
   });
 
   it('delegates to publisher and transitions Outbox status atomically to PUBLISHED', async () => {
@@ -105,6 +126,9 @@ describe('OutboxRelayService', () => {
     expect(poller.pollPending).toHaveBeenCalledWith(100);
     expect(publisher.publish).toHaveBeenCalledWith(event);
     expect(repository.markPublished).toHaveBeenCalledWith(event.id, 2, '1024');
+
+    // Verify lag metric recorded
+    expect(metricsService.recordOutboxLag).toHaveBeenCalledWith('outbox-relay', 'PaymentInitiated', expect.any(Number));
   });
 
   it('publisher boundary failures increment retry count and transition retryable events to RETRYING', async () => {
@@ -120,6 +144,9 @@ describe('OutboxRelayService', () => {
     expect(publisher.publish).toHaveBeenCalledWith(event);
     expect(repository.markFailed).toHaveBeenCalledWith(event.id, 'Publish timeout or network failure');
     expect(repository.markRetrying).toHaveBeenCalledWith(event.id);
+
+    // Verify retry counter incremented
+    expect(metricsService.recordPublicationRetry).toHaveBeenCalledWith('outbox-relay', 'PaymentInitiated');
   });
 
   it('publisher boundary failures do not transition to RETRYING if retry limit is exhausted', async () => {

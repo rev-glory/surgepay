@@ -1,10 +1,11 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { CompressionTypes, Kafka, Producer, RecordMetadata } from 'kafkajs';
 
 import { ConfigService } from '@surgepay/config';
 import { BaseEventEnvelope } from '@surgepay/events';
 
 import { LoggerService } from '../logger';
+import { MetricsService } from '../observability/prometheus-metrics.service';
 import { EventSerializer } from './serializer';
 
 export interface EventProducer {
@@ -21,6 +22,7 @@ export class KafkaEventProducer implements EventProducer, OnModuleInit, OnModule
   constructor(
     private readonly config: ConfigService,
     private readonly logger: LoggerService,
+    @Optional() private readonly metricsService?: MetricsService,
   ) {
     this.logger.setContext('KafkaEventProducer');
 
@@ -61,17 +63,28 @@ export class KafkaEventProducer implements EventProducer, OnModuleInit, OnModule
   }
 
   async publish(topic: string, key: string, event: BaseEventEnvelope<unknown>): Promise<RecordMetadata[]> {
-    const value = EventSerializer.serialize(event);
-    return await this.producer.send({
-      topic,
-      acks: -1,
-      compression: CompressionTypes.GZIP,
-      messages: [
-        {
-          key,
-          value,
-        },
-      ],
-    });
+    const startTime = Date.now();
+    const serviceName = this.config.logging?.serviceName || 'unknown-service';
+    try {
+      const value = EventSerializer.serialize(event);
+      const metadata = await this.producer.send({
+        topic,
+        acks: -1,
+        compression: CompressionTypes.GZIP,
+        messages: [
+          {
+            key,
+            value,
+          },
+        ],
+      });
+      const durationMs = Date.now() - startTime;
+      this.metricsService?.recordPublishSuccess(serviceName, event.eventType, durationMs);
+      return metadata;
+    } catch (err) {
+      const durationMs = Date.now() - startTime;
+      this.metricsService?.recordPublishFailure(serviceName, event.eventType, durationMs);
+      throw err;
+    }
   }
 }

@@ -53,6 +53,7 @@ export interface PrismaInboxDelegate {
       retryCount?: number;
     };
   }): Promise<{ count: number }>;
+  count(args?: { where?: unknown }): Promise<number>;
 }
 
 export interface PrismaClientLike {
@@ -162,5 +163,15 @@ export abstract class BaseInboxRepository {
     });
 
     return result.count > 0;
+  }
+
+  async countDlqDepth(consumer: string): Promise<number> {
+    const count = await this.prismaClient.inboxEvent.count({
+      where: {
+        consumer,
+        status: 'DLQ_SENT',
+      },
+    });
+    return count as number;
   }
 }

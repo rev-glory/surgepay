@@ -1,10 +1,11 @@
-import type { OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { type OnModuleDestroy, type OnModuleInit, Optional } from '@nestjs/common';
 import { type Consumer, Kafka } from 'kafkajs';
 
 import type { ConfigService } from '@surgepay/config';
 import type { BaseEventEnvelope } from '@surgepay/events';
 
 import type { LoggerService } from '../logger';
+import { MetricsService } from '../observability/prometheus-metrics.service';
 import { DEAD_LETTER_EVENT_TYPE, type DeadLetterRecord } from './dead-letter.types';
 import type { BaseInboxRepository } from './inbox.repository';
 import type { KafkaEventProducer } from './producer';
@@ -33,11 +34,13 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
   protected abstract readonly topic: string;
   protected abstract readonly groupId: string;
   protected abstract readonly inboxRepository: BaseInboxRepository;
+  private dlqSyncInterval?: NodeJS.Timeout;
 
   constructor(
     protected readonly config: ConfigService,
     protected readonly logger: LoggerService,
     protected readonly eventProducer: KafkaEventProducer,
+    @Optional() protected readonly metricsService?: MetricsService,
   ) {
     const kafkaConfig = this.config.kafka;
     this.kafka = new Kafka({
@@ -67,6 +70,21 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
 
     await this.consumer.connect();
     await this.consumer.subscribe({ topic: this.topic, fromBeginning: true });
+
+    // Sync DLQ depth baseline on startup
+    const serviceName = this.config.logging?.serviceName || 'unknown-service';
+    const syncDlqDepth = async (): Promise<void> => {
+      try {
+        const depth = await this.inboxRepository.countDlqDepth(this.groupId);
+        this.metricsService?.setInboxDlqDepth(serviceName, this.groupId, depth);
+      } catch (err) {
+        this.logger.error('Failed to sync inbox DLQ depth gauge', err as Error);
+      }
+    };
+    await syncDlqDepth();
+    this.dlqSyncInterval = setInterval(() => {
+      syncDlqDepth().catch(() => {});
+    }, 15000);
 
     await this.consumer.run({
       autoCommit: false, // Explicitly disable autoCommit
@@ -106,6 +124,9 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
           offset: message.offset,
         };
 
+        const startTime = Date.now();
+        this.metricsService?.recordConsumeAttempt(serviceName, envelope.eventType, this.groupId);
+
         this.logger.info(`Received event ${envelope.eventType}`, logContext);
 
         // 2. Check duplicate state
@@ -118,6 +139,7 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
               duplicate: true,
               inboxStatus: existing.status,
             });
+            this.metricsService?.recordDuplicateSkip(serviceName, envelope.eventType, this.groupId);
             await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
             return;
           }
@@ -136,6 +158,7 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
           // First time delivery, record as RECEIVED
           try {
             await this.inboxRepository.recordReceived(envelope, this.groupId);
+            this.metricsService?.recordInboxReceived(serviceName, this.groupId, envelope.eventType);
             this.logger.info(`Durable Inbox persistence succeeded for event ${envelope.eventId}`, logContext);
           } catch (err) {
             if (isPrismaUniqueConstraintError(err)) {
@@ -148,6 +171,7 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
               const collided = await this.inboxRepository.findByEventIdAndConsumer(envelope.eventId, this.groupId);
               if (collided) {
                 if (collided.status === 'PROCESSED' || collided.status === 'DLQ_SENT') {
+                  this.metricsService?.recordDuplicateSkip(serviceName, envelope.eventType, this.groupId);
                   await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
                   return;
                 }
@@ -178,6 +202,7 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
           // Query DB again to see if it is PROCESSING, PROCESSED, or DLQ_SENT
           const current = await this.inboxRepository.findByEventIdAndConsumer(envelope.eventId, this.groupId);
           if (current && (current.status === 'PROCESSED' || current.status === 'DLQ_SENT')) {
+            this.metricsService?.recordDuplicateSkip(serviceName, envelope.eventType, this.groupId);
             await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
             return;
           }
@@ -192,6 +217,10 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
 
           // Mark as PROCESSED
           await this.inboxRepository.updateStatus(envelope.eventId, this.groupId, 'PROCESSED');
+          this.metricsService?.recordInboxProcessed(serviceName, this.groupId, envelope.eventType);
+
+          const durationMs = Date.now() - startTime;
+          this.metricsService?.recordHandlerDuration(serviceName, envelope.eventType, this.groupId, 'success', durationMs);
 
           // Commit partition offset
           await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
@@ -199,6 +228,10 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
         } catch (handlerErr: unknown) {
           const error = handlerErr as Error;
           this.logger.error(`Handler execution failed for event ${envelope.eventId}`, error, logContext);
+
+          const durationMs = Date.now() - startTime;
+          this.metricsService?.recordHandlerDuration(serviceName, envelope.eventType, this.groupId, 'failure', durationMs);
+          this.metricsService?.recordHandlerFailure(serviceName, envelope.eventType, this.groupId);
 
           // Transition back to RETRYING or FAILED depending on retry limits
           const currentRecord = await this.inboxRepository.findByEventIdAndConsumer(envelope.eventId, this.groupId);
@@ -252,6 +285,10 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
                 'DLQ_SENT',
                 newRetryCount,
               );
+              this.metricsService?.recordInboxDlqEvent(serviceName, this.groupId, envelope.eventType);
+              
+              // Sync the DLQ depth gauge immediately from the DB
+              await syncDlqDepth();
 
               // Commit partition offset
               await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
@@ -280,6 +317,9 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
 
   async onModuleDestroy(): Promise<void> {
     this.logger.info(`Disconnecting consumer from topic ${this.topic}...`);
+    if (this.dlqSyncInterval) {
+      clearInterval(this.dlqSyncInterval);
+    }
     if (this.consumer) {
       await this.consumer.disconnect();
     }

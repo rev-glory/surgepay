@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as http from 'http';
 import * as path from 'path';
 
 import { NestFactory } from '@nestjs/core';
@@ -21,7 +22,7 @@ if (!fs.existsSync(resolvedEnvPath)) {
 }
 dotenv.config({ path: resolvedEnvPath });
 
-import { LoggerFactory, LoggerService } from '@surgepay/common';
+import { LoggerFactory, LoggerService, MetricsService } from '@surgepay/common';
 import type { LoggingConfig } from '@surgepay/config';
 
 import { RelayModule } from './relay.module';
@@ -45,6 +46,36 @@ async function bootstrap(): Promise<void> {
   app.useLogger(logger);
 
   app.enableShutdownHooks();
+
+  const metricsPortStr = process.env.METRICS_PORT;
+  const metricsPort = metricsPortStr ? parseInt(metricsPortStr, 10) : null;
+  let metricsServer: http.Server | undefined;
+
+  if (metricsPort) {
+    const metricsService = app.get(MetricsService);
+    metricsServer = http.createServer(async (req, res) => {
+      if (req.url === '/metrics' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': metricsService.registry.contentType });
+        res.end(await metricsService.registry.metrics());
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+
+    metricsServer.listen(metricsPort, '0.0.0.0', () => {
+      logger.info(`Prometheus metrics endpoint listening on http://0.0.0.0:${metricsPort}/metrics`);
+    });
+
+    const originalClose = app.close.bind(app);
+    app.close = async () => {
+      logger.info('Closing Prometheus metrics server...');
+      await new Promise<void>((resolve) => {
+        metricsServer?.close(() => resolve());
+      });
+      await originalClose();
+    };
+  }
 
   logger.info('Outbox Relay Service bootstrapped successfully. Background worker running.');
 }
