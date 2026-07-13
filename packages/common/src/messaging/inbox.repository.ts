@@ -29,6 +29,29 @@ export interface PrismaInboxDelegate {
       };
     };
   }): Promise<unknown>;
+  update(args: {
+    where: {
+      consumer_eventId: {
+        consumer: string;
+        eventId: string;
+      };
+    };
+    data: {
+      status: InboxStatus;
+      processedAt?: Date | null;
+      retryCount?: number;
+    };
+  }): Promise<unknown>;
+  updateMany(args: {
+    where: {
+      consumer: string;
+      eventId: string;
+      status: { in: InboxStatus[] };
+    };
+    data: {
+      status: InboxStatus;
+    };
+  }): Promise<{ count: number }>;
 }
 
 export interface PrismaClientLike {
@@ -74,5 +97,53 @@ export abstract class BaseInboxRepository {
     });
 
     return (model as InboxEvent) || null;
+  }
+
+  async transitionStatus(
+    eventId: string,
+    consumer: string,
+    fromStatus: InboxStatus | InboxStatus[],
+    toStatus: InboxStatus,
+  ): Promise<InboxEvent | null> {
+    const statuses = Array.isArray(fromStatus) ? fromStatus : [fromStatus];
+    const result = await this.prismaClient.inboxEvent.updateMany({
+      where: {
+        consumer,
+        eventId,
+        status: { in: statuses },
+      },
+      data: {
+        status: toStatus,
+      },
+    });
+
+    if (result.count === 0) {
+      return null;
+    }
+
+    return this.findByEventIdAndConsumer(eventId, consumer);
+  }
+
+  async updateStatus(
+    eventId: string,
+    consumer: string,
+    status: InboxStatus,
+    retryCount?: number,
+  ): Promise<InboxEvent> {
+    const model = await this.prismaClient.inboxEvent.update({
+      where: {
+        consumer_eventId: {
+          consumer,
+          eventId,
+        },
+      },
+      data: {
+        status,
+        processedAt: status === 'PROCESSED' ? new Date() : undefined,
+        retryCount: retryCount !== undefined ? retryCount : undefined,
+      },
+    });
+
+    return model as InboxEvent;
   }
 }

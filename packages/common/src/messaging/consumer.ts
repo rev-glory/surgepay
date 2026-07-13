@@ -8,6 +8,22 @@ import type { LoggerService } from '../logger';
 import type { BaseInboxRepository } from './inbox.repository';
 import { EventSerializer } from './serializer';
 
+export class EventProcessingInProgressException extends Error {
+  constructor(eventId: string, consumer: string) {
+    super(`Event ${eventId} is currently being processed by consumer ${consumer}.`);
+    this.name = 'EventProcessingInProgressException';
+  }
+}
+
+function isPrismaUniqueConstraintError(err: unknown): boolean {
+  return (
+    err !== null &&
+    typeof err === 'object' &&
+    'code' in err &&
+    (err as { code: string }).code === 'P2002'
+  );
+}
+
 export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy {
   protected readonly kafka: Kafka;
   protected consumer!: Consumer;
@@ -33,6 +49,8 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
         : undefined,
     });
   }
+
+  protected abstract handleEvent(envelope: BaseEventEnvelope<unknown>): Promise<void>;
 
   async onModuleInit(): Promise<void> {
     this.logger.setContext(this.constructor.name);
@@ -63,7 +81,7 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
           // 1. Deserialization & Validation
           envelope = EventSerializer.deserialize(message.value);
         } catch (err) {
-          this.logger.error('Failed to deserialize/validate event envelope', err, {
+          this.logger.error('Failed to deserialize/validate event envelope', err as Error, {
             topic,
             partition,
             offset: message.offset,
@@ -86,16 +104,109 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
 
         this.logger.info(`Received event ${envelope.eventType}`, logContext);
 
-        try {
-          // 2. Persist event to local Inbox in RECEIVED state
-          await this.inboxRepository.recordReceived(envelope, this.groupId);
-          this.logger.info(`Durable Inbox persistence succeeded for event ${envelope.eventId}`, logContext);
+        // 2. Check duplicate state
+        const existing = await this.inboxRepository.findByEventIdAndConsumer(envelope.eventId, this.groupId);
 
-          // NOTE: For Commit 5, offset commits are intentionally deferred to Commit 6
-          // so we do not call commitOffsets() here.
-        } catch (err) {
-          this.logger.error(`Database write failed for event ${envelope.eventId}`, err, logContext);
-          throw err;
+        if (existing) {
+          if (existing.status === 'PROCESSED') {
+            this.logger.info('Duplicate event delivery skipped (already processed)', {
+              ...logContext,
+              duplicate: true,
+              inboxStatus: existing.status,
+            });
+            await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
+            return;
+          }
+
+          if (existing.status === 'PROCESSING') {
+            this.logger.warn('Duplicate event delivery skipped - processing in progress', {
+              ...logContext,
+              duplicate: true,
+              inboxStatus: existing.status,
+            });
+            throw new EventProcessingInProgressException(envelope.eventId, this.groupId);
+          }
+
+          // If status is RECEIVED or RETRYING, we proceed to transition and process it
+        } else {
+          // First time delivery, record as RECEIVED
+          try {
+            await this.inboxRepository.recordReceived(envelope, this.groupId);
+            this.logger.info(`Durable Inbox persistence succeeded for event ${envelope.eventId}`, logContext);
+          } catch (err) {
+            if (isPrismaUniqueConstraintError(err)) {
+              this.logger.info('Duplicate event delivery detected via DB constraint (concurrent insert)', {
+                ...logContext,
+                duplicate: true,
+              });
+
+              // Re-evaluate the status of the record in DB
+              const collided = await this.inboxRepository.findByEventIdAndConsumer(envelope.eventId, this.groupId);
+              if (collided) {
+                if (collided.status === 'PROCESSED') {
+                  await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
+                  return;
+                }
+                if (collided.status === 'PROCESSING') {
+                  throw new EventProcessingInProgressException(envelope.eventId, this.groupId);
+                }
+              }
+            } else {
+              this.logger.error(`Database write failed for event ${envelope.eventId}`, err as Error, logContext);
+              throw err;
+            }
+          }
+        }
+
+        // 3. Atomically transition from (RECEIVED, RETRYING) to PROCESSING to claim lock
+        const transitioned = await this.inboxRepository.transitionStatus(
+          envelope.eventId,
+          this.groupId,
+          ['RECEIVED', 'RETRYING'],
+          'PROCESSING',
+        );
+
+        if (!transitioned) {
+          this.logger.info('Duplicate event delivery skipped (concurrency lock acquired by another worker)', {
+            ...logContext,
+            duplicate: true,
+          });
+          // Query DB again to see if it is PROCESSING or PROCESSED
+          const current = await this.inboxRepository.findByEventIdAndConsumer(envelope.eventId, this.groupId);
+          if (current && current.status === 'PROCESSED') {
+            await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
+            return;
+          }
+          throw new EventProcessingInProgressException(envelope.eventId, this.groupId);
+        }
+
+        this.logger.info(`Acquired processing lock for event ${envelope.eventId}, executing handler`, logContext);
+
+        // 4. Execute the business handler
+        try {
+          await this.handleEvent(envelope);
+
+          // Mark as PROCESSED
+          await this.inboxRepository.updateStatus(envelope.eventId, this.groupId, 'PROCESSED');
+
+          // Commit partition offset
+          await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
+          this.logger.info(`Successfully processed event ${envelope.eventId} and committed offset`, logContext);
+        } catch (handlerErr) {
+          this.logger.error(`Handler execution failed for event ${envelope.eventId}`, handlerErr as Error, logContext);
+
+          // Transition back to RETRYING to allow future processing runs
+          const currentRecord = await this.inboxRepository.findByEventIdAndConsumer(envelope.eventId, this.groupId);
+          const currentRetry = currentRecord?.retryCount ?? 0;
+
+          await this.inboxRepository.updateStatus(
+            envelope.eventId,
+            this.groupId,
+            'RETRYING',
+            currentRetry + 1,
+          );
+
+          throw handlerErr;
         }
       },
     });

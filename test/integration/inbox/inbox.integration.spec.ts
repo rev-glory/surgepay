@@ -33,7 +33,7 @@ jest.mock('kafkajs', () => {
   };
 });
 
-describe('Inbox Pattern Foundation Integration Tests', () => {
+describe('Inbox Pattern Idempotency Integration Tests', () => {
   let moduleFixture: TestingModule;
   let prismaService: PrismaService;
   let consumer: OrderEventConsumer;
@@ -48,7 +48,6 @@ describe('Inbox Pattern Foundation Integration Tests', () => {
     }
 
     try {
-      // Standard test environment uses the DATABASE_URL set by run-integration-tests.ts
       moduleFixture = await Test.createTestingModule({
         imports: [ConfigModule, LoggerModule, PrismaModule, OrderModule],
       }).compile();
@@ -61,7 +60,6 @@ describe('Inbox Pattern Foundation Integration Tests', () => {
     repository = moduleFixture.get<OrderInboxRepository>(OrderInboxRepository);
 
     await prismaService.client.$connect();
-    // Initialize consumer to set up Kafka subscription & eachMessage callback
     await consumer.onModuleInit();
   });
 
@@ -98,7 +96,7 @@ describe('Inbox Pattern Foundation Integration Tests', () => {
 
   it('Test Case 1: Event Deserialization and Validation - Rejects malformed envelopes', async () => {
     const malformedPayload = {
-      eventId: '', // Empty eventId is invalid
+      eventId: '',
       eventType: PAYMENT_INITIATED,
       correlationId: '',
       causationId: randomUUID(),
@@ -122,14 +120,14 @@ describe('Inbox Pattern Foundation Integration Tests', () => {
       }),
     ).rejects.toThrow();
 
-    // Verify nothing is persisted
     const count = await prismaService.client.inboxEvent.count();
     expect(count).toBe(0);
   });
 
-  it('Test Case 2: Inbox Persistence - Persists valid PaymentInitiated envelope as RECEIVED', async () => {
+  it('Test Case 2: First Delivery - Persists valid envelope as PROCESSED, executes handler and commits offset', async () => {
     const eventId = randomUUID();
     const envelope = createValidEnvelope(eventId);
+    const handleEventSpy = jest.spyOn(consumer as any, 'handleEvent').mockResolvedValue(undefined);
 
     const handler = (global as any).mockEachMessage;
     await handler({
@@ -141,76 +139,256 @@ describe('Inbox Pattern Foundation Integration Tests', () => {
       },
     });
 
-    // Verify it is persisted in the database
+    // Verify handler executed once
+    expect(handleEventSpy).toHaveBeenCalledTimes(1);
+    expect(handleEventSpy).toHaveBeenCalledWith(envelope);
+
+    // Verify it is persisted in the database with PROCESSED status
     const persisted = await repository.findByEventIdAndConsumer(eventId, consumer['groupId']);
     expect(persisted).toBeDefined();
     expect(persisted?.eventId).toBe(eventId);
-    expect(persisted?.status).toBe('RECEIVED');
-    expect(persisted?.eventType).toBe(PAYMENT_INITIATED);
-    expect(persisted?.correlationId).toBe(envelope.correlationId);
-    expect(persisted?.causationId).toBe(envelope.causationId);
-    expect(persisted?.sagaId).toBe(envelope.sagaId);
-    expect(persisted?.version).toBe(envelope.version);
-    expect(persisted?.retryCount).toBe(0);
-    expect(persisted?.processedAt).toBeNull();
-    expect(persisted?.receivedAt).toBeInstanceOf(Date);
-    expect(persisted?.timestamp).toBeInstanceOf(Date);
+    expect(persisted?.status).toBe('PROCESSED');
+    expect(persisted?.processedAt).toBeInstanceOf(Date);
+
+    // Verify offset is committed (offset + 1)
+    expect(mockCommitOffsets).toHaveBeenCalledTimes(1);
+    expect(mockCommitOffsets).toHaveBeenCalledWith([
+      { topic: 'payments.initiated', partition: 0, offset: '3' },
+    ]);
   });
 
-  it('Test Case 3: DB Constraint Violation - Enforces unique consumer and eventId pair', async () => {
+  it('Test Case 3: Duplicate Delivery - Skips handler and commits offset', async () => {
     const eventId = randomUUID();
     const envelope = createValidEnvelope(eventId);
+    const handleEventSpy = jest.spyOn(consumer as any, 'handleEvent').mockResolvedValue(undefined);
 
     const handler = (global as any).mockEachMessage;
-    
-    // First persist succeeds
+
+    // First delivery
     await handler({
       topic: 'payments.initiated',
       partition: 0,
       message: {
         value: Buffer.from(JSON.stringify(envelope)),
-        offset: '3',
+        offset: '10',
       },
     });
 
-    // Second persist with same eventId and consumer group throws unique constraint violation
+    expect(handleEventSpy).toHaveBeenCalledTimes(1);
+    expect(mockCommitOffsets).toHaveBeenCalledTimes(1);
+
+    mockCommitOffsets.mockClear();
+
+    // Second delivery (Duplicate)
+    await handler({
+      topic: 'payments.initiated',
+      partition: 0,
+      message: {
+        value: Buffer.from(JSON.stringify(envelope)),
+        offset: '12',
+      },
+    });
+
+    // Handler should still only have been called once overall
+    expect(handleEventSpy).toHaveBeenCalledTimes(1);
+    
+    // Offset should still be committed for the duplicate to acknowledge receipt
+    expect(mockCommitOffsets).toHaveBeenCalledTimes(1);
+    expect(mockCommitOffsets).toHaveBeenLastCalledWith([
+      { topic: 'payments.initiated', partition: 0, offset: '13' },
+    ]);
+  });
+
+  it('Test Case 4: PROCESSING In-Flight Blocks Commits', async () => {
+    const eventId = randomUUID();
+    const envelope = createValidEnvelope(eventId);
+    const handleEventSpy = jest.spyOn(consumer as any, 'handleEvent').mockResolvedValue(undefined);
+
+    // Manually insert an event in PROCESSING status
+    await prismaService.client.inboxEvent.create({
+      data: {
+        eventId,
+        consumer: consumer['groupId'],
+        status: 'PROCESSING',
+        eventType: envelope.eventType,
+        correlationId: envelope.correlationId,
+        causationId: envelope.causationId,
+        sagaId: envelope.sagaId,
+        timestamp: new Date(envelope.timestamp),
+        version: envelope.version,
+        payload: envelope.payload,
+      },
+    });
+
+    const handler = (global as any).mockEachMessage;
+
+    // Delivery should throw EventProcessingInProgressException
     await expect(
       handler({
         topic: 'payments.initiated',
         partition: 0,
         message: {
           value: Buffer.from(JSON.stringify(envelope)),
-          offset: '4',
+          offset: '20',
         },
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow('is currently being processed by consumer');
 
-    // Verify only 1 record exists
-    const count = await prismaService.client.inboxEvent.count();
-    expect(count).toBe(1);
+    // Handler must NOT execute
+    expect(handleEventSpy).not.toHaveBeenCalled();
+    // Offset must NOT commit
+    expect(mockCommitOffsets).not.toHaveBeenCalled();
   });
 
-  it('Test Case 4: Manual Commit Capability - Available but not invoked on RECEIVED', async () => {
+  it('Test Case 5: Interrupted Run Recovery - Executes handler for RETRYING status', async () => {
     const eventId = randomUUID();
     const envelope = createValidEnvelope(eventId);
+    const handleEventSpy = jest.spyOn(consumer as any, 'handleEvent').mockResolvedValue(undefined);
+
+    // Manually insert in RETRYING status
+    await prismaService.client.inboxEvent.create({
+      data: {
+        eventId,
+        consumer: consumer['groupId'],
+        status: 'RETRYING',
+        eventType: envelope.eventType,
+        correlationId: envelope.correlationId,
+        causationId: envelope.causationId,
+        sagaId: envelope.sagaId,
+        timestamp: new Date(envelope.timestamp),
+        version: envelope.version,
+        payload: envelope.payload,
+      },
+    });
 
     const handler = (global as any).mockEachMessage;
-
-    // Successful receipt and database persistence
     await handler({
       topic: 'payments.initiated',
       partition: 0,
       message: {
         value: Buffer.from(JSON.stringify(envelope)),
-        offset: '5',
+        offset: '30',
       },
     });
 
-    // In Commit 5, offset commits must not be called upon receipt/persistence
-    expect(mockCommitOffsets).not.toHaveBeenCalled();
+    // Handler executes
+    expect(handleEventSpy).toHaveBeenCalledTimes(1);
 
-    // Assert that the manual commit offsets function is available on the consumer class
-    expect(consumer.commitOffset).toBeDefined();
-    expect(typeof consumer.commitOffset).toBe('function');
+    // Status transitions to PROCESSED
+    const persisted = await repository.findByEventIdAndConsumer(eventId, consumer['groupId']);
+    expect(persisted?.status).toBe('PROCESSED');
+
+    // Offset committed
+    expect(mockCommitOffsets).toHaveBeenCalledTimes(1);
+    expect(mockCommitOffsets).toHaveBeenCalledWith([
+      { topic: 'payments.initiated', partition: 0, offset: '31' },
+    ]);
+  });
+
+  it('Test Case 6: Same Event, Different Consumer - Processes independently', async () => {
+    const eventId = randomUUID();
+    const envelope = createValidEnvelope(eventId);
+
+    // Persist as PROCESSED for the primary consumer
+    await prismaService.client.inboxEvent.create({
+      data: {
+        eventId,
+        consumer: consumer['groupId'],
+        status: 'PROCESSED',
+        eventType: envelope.eventType,
+        correlationId: envelope.correlationId,
+        causationId: envelope.causationId,
+        sagaId: envelope.sagaId,
+        timestamp: new Date(envelope.timestamp),
+        version: envelope.version,
+        payload: envelope.payload,
+      },
+    });
+
+    // Try to recordReceived for a different consumer - should succeed and not throw
+    const otherConsumer = 'balance-service-consumer';
+    const persisted = await repository.recordReceived(envelope, otherConsumer);
+    expect(persisted).toBeDefined();
+    expect(persisted.consumer).toBe(otherConsumer);
+    expect(persisted.eventId).toBe(eventId);
+
+    const count = await prismaService.client.inboxEvent.count();
+    expect(count).toBe(2);
+  });
+
+  it('Test Case 7: Concurrent Duplicate Delivery - Single worker executes handler', async () => {
+    const eventId = randomUUID();
+    const envelope = createValidEnvelope(eventId);
+
+    // Mock handler with a small delay so that both workers overlap during execution
+    const handleEventSpy = jest.spyOn(consumer as any, 'handleEvent').mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    const handler = (global as any).mockEachMessage;
+
+    // Call two handlers in parallel
+    const results = await Promise.allSettled([
+      handler({
+        topic: 'payments.initiated',
+        partition: 0,
+        message: {
+          value: Buffer.from(JSON.stringify(envelope)),
+          offset: '40',
+        },
+      }),
+      handler({
+        topic: 'payments.initiated',
+        partition: 0,
+        message: {
+          value: Buffer.from(JSON.stringify(envelope)),
+          offset: '41',
+        },
+      }),
+    ]);
+
+    // One worker must succeed, the other must throw EventProcessingInProgressException
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+
+    expect(fulfilled.length).toBe(1);
+    expect(rejected.length).toBe(1);
+
+    const error = (rejected[0] as PromiseRejectedResult).reason;
+    expect(error.name).toBe('EventProcessingInProgressException');
+
+    // Handler must only be executed once
+    expect(handleEventSpy).toHaveBeenCalledTimes(1);
+
+    // Database record should exist with the expected state
+    const persisted = await repository.findByEventIdAndConsumer(eventId, consumer['groupId']);
+    expect(persisted).toBeDefined();
+  });
+
+  it('Test Case 8: Handler Failure - Reverts status to RETRYING and increments retryCount', async () => {
+    const eventId = randomUUID();
+    const envelope = createValidEnvelope(eventId);
+    const handleEventSpy = jest.spyOn(consumer as any, 'handleEvent').mockRejectedValue(new Error('Business logic failed'));
+
+    const handler = (global as any).mockEachMessage;
+
+    await expect(
+      handler({
+        topic: 'payments.initiated',
+        partition: 0,
+        message: {
+          value: Buffer.from(JSON.stringify(envelope)),
+          offset: '50',
+        },
+      }),
+    ).rejects.toThrow('Business logic failed');
+
+    // Verify it was transitioned to RETRYING status with retryCount incremented to 1
+    const persisted = await repository.findByEventIdAndConsumer(eventId, consumer['groupId']);
+    expect(persisted?.status).toBe('RETRYING');
+    expect(persisted?.retryCount).toBe(1);
+
+    // Offset must NOT be committed
+    expect(mockCommitOffsets).not.toHaveBeenCalled();
   });
 });

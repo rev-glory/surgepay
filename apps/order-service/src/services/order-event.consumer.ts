@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import { BaseKafkaConsumer, LoggerService, TOPIC_REGISTRY } from '@surgepay/common';
 import { ConfigService } from '@surgepay/config';
-import { PAYMENT_INITIATED } from '@surgepay/events';
+import { BaseEventEnvelope, PAYMENT_INITIATED } from '@surgepay/events';
 
 import { OrderInboxRepository } from '../repositories/inbox.repository';
 
@@ -17,5 +17,12 @@ export class OrderEventConsumer extends BaseKafkaConsumer {
     protected readonly inboxRepository: OrderInboxRepository,
   ) {
     super(config, logger);
+  }
+
+  protected async handleEvent(envelope: BaseEventEnvelope<unknown>): Promise<void> {
+    this.logger.info(`Handling event ${envelope.eventType} inside OrderEventConsumer`, {
+      eventId: envelope.eventId,
+      eventType: envelope.eventType,
+    });
   }
 }
