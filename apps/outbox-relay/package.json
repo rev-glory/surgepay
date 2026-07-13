@@ -21,6 +21,7 @@
     "@prisma/client": "^5.15.0",
     "@surgepay/common": "workspace:*",
     "@surgepay/config": "workspace:*",
+    "@surgepay/events": "workspace:*",
     "dotenv": "^17.4.2",
     "nestjs-pino": "^4.3.0",
     "pino": "^9.6.0",

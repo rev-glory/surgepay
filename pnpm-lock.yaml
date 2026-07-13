@@ -544,6 +544,9 @@ importers:
       '@surgepay/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@surgepay/events':
+        specifier: workspace:*
+        version: link:../../packages/events
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -690,6 +693,9 @@ importers:
       '@surgepay/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@surgepay/events':
+        specifier: workspace:*
+        version: link:../events
       class-transformer:
         specifier: ^0.5.1
         version: 0.5.1

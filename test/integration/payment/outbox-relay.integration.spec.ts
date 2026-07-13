@@ -1,4 +1,5 @@
 import { Test, type TestingModule } from '@nestjs/testing';
+import { KafkaEventProducer } from '@surgepay/common';
 import { RelayModule } from '../../../apps/outbox-relay/src/relay.module';
 import { OutboxPoller } from '../../../apps/outbox-relay/src/poller';
 import { PrismaService } from '../../../apps/outbox-relay/src/prisma/prisma.service';
@@ -21,7 +22,14 @@ describe('Outbox Relay Postgres SKIP LOCKED Integration', () => {
 
     moduleFixture = await Test.createTestingModule({
       imports: [RelayModule],
-    }).compile();
+    })
+      .overrideProvider(KafkaEventProducer)
+      .useValue({
+        onModuleInit: jest.fn().mockResolvedValue(undefined),
+        onModuleDestroy: jest.fn().mockResolvedValue(undefined),
+        publish: jest.fn().mockResolvedValue(undefined),
+      })
+      .compile();
 
     poller = moduleFixture.get<OutboxPoller>(OutboxPoller);
     prismaService = moduleFixture.get<PrismaService>(PrismaService);
