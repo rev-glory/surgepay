@@ -1,6 +1,6 @@
 import type { BaseEventEnvelope } from '@surgepay/events';
 
-export type InboxStatus = 'RECEIVED' | 'PROCESSING' | 'PROCESSED' | 'FAILED' | 'RETRYING';
+export type InboxStatus = 'RECEIVED' | 'PROCESSING' | 'PROCESSED' | 'FAILED' | 'RETRYING' | 'DLQ_SENT';
 
 export interface InboxEvent {
   id: string;
@@ -50,6 +50,7 @@ export interface PrismaInboxDelegate {
     };
     data: {
       status: InboxStatus;
+      retryCount?: number;
     };
   }): Promise<{ count: number }>;
 }
@@ -145,5 +146,21 @@ export abstract class BaseInboxRepository {
     });
 
     return model as InboxEvent;
+  }
+
+  async prepareForReplay(eventId: string, consumer: string): Promise<boolean> {
+    const result = await this.prismaClient.inboxEvent.updateMany({
+      where: {
+        consumer,
+        eventId,
+        status: { in: ['DLQ_SENT'] },
+      },
+      data: {
+        status: 'RETRYING',
+        retryCount: 0,
+      },
+    });
+
+    return result.count > 0;
   }
 }

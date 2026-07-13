@@ -24,6 +24,7 @@ export interface KafkaConfig {
   ssl: boolean;
   sasl: boolean;
   consumerGroupId: string;
+  consumerRetryLimit: number;
 }
 
 export interface HttpConfig {

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
-import { BaseKafkaConsumer, LoggerService, TOPIC_REGISTRY } from '@surgepay/common';
+import { BaseKafkaConsumer, KafkaEventProducer,LoggerService, TOPIC_REGISTRY } from '@surgepay/common';
 import { ConfigService } from '@surgepay/config';
 import { BaseEventEnvelope, PAYMENT_INITIATED } from '@surgepay/events';
 
@@ -15,8 +15,9 @@ export class OrderEventConsumer extends BaseKafkaConsumer {
     config: ConfigService,
     logger: LoggerService,
     protected readonly inboxRepository: OrderInboxRepository,
+    eventProducer: KafkaEventProducer,
   ) {
-    super(config, logger);
+    super(config, logger, eventProducer);
   }
 
   protected async handleEvent(envelope: BaseEventEnvelope<unknown>): Promise<void> {

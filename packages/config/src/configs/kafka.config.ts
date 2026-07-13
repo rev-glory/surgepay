@@ -10,4 +10,7 @@ export default registerAs('kafka', (): KafkaConfig => ({
   ssl: process.env.KAFKA_SSL === 'true',
   sasl: process.env.KAFKA_SASL === 'true',
   consumerGroupId: process.env.KAFKA_CONSUMER_GROUP_ID || 'surgepay-consumer-group',
+  consumerRetryLimit: process.env.KAFKA_CONSUMER_RETRY_LIMIT
+    ? parseInt(process.env.KAFKA_CONSUMER_RETRY_LIMIT, 10)
+    : 3,
 }));

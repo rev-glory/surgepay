@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 
-import { LoggerModule } from '@surgepay/common';
+import { KafkaEventProducer,LoggerModule } from '@surgepay/common';
 import { ConfigModule } from '@surgepay/config';
 
 import { OrderController } from '../controllers/order.controller';
@@ -17,12 +17,14 @@ import { OrderEventConsumer } from '../services/order-event.consumer';
     OrderRepository,
     OrderInboxRepository,
     OrderEventConsumer,
+    KafkaEventProducer,
   ],
   exports: [
     OrderService,
     OrderRepository,
     OrderInboxRepository,
     OrderEventConsumer,
+    KafkaEventProducer,
   ],
 })
 export class OrderModule {}

@@ -9,14 +9,29 @@ import { OrderEventConsumer } from '../../../apps/order-service/src/services/ord
 import { OrderInboxRepository } from '../../../apps/order-service/src/repositories/inbox.repository';
 import { BaseEventEnvelope } from '@surgepay/events';
 import { PAYMENT_INITIATED } from '@surgepay/events';
-import { CURRENT_EVENT_VERSION } from '@surgepay/common';
+import { CURRENT_EVENT_VERSION, DeadLetterReplayer, DeadLetterRecord, KafkaEventProducer } from '@surgepay/common';
 
 // Mock kafkajs
 const mockCommitOffsets = jest.fn().mockResolvedValue(undefined);
+const mockSend = jest.fn().mockResolvedValue([{ topicName: 'payments.dlq', partition: 0 }]);
 jest.mock('kafkajs', () => {
   return {
+    CompressionTypes: {
+      None: 0,
+      GZIP: 1,
+      Snappy: 2,
+      LZ4: 3,
+      ZSTD: 4,
+    },
     Kafka: jest.fn().mockImplementation(() => {
       return {
+        producer: jest.fn().mockImplementation(() => {
+          return {
+            connect: jest.fn().mockResolvedValue(undefined),
+            send: mockSend,
+            disconnect: jest.fn().mockResolvedValue(undefined),
+          };
+        }),
         consumer: jest.fn().mockImplementation(() => {
           return {
             connect: jest.fn().mockResolvedValue(undefined),
@@ -365,7 +380,7 @@ describe('Inbox Pattern Idempotency Integration Tests', () => {
     expect(persisted).toBeDefined();
   });
 
-  it('Test Case 8: Handler Failure - Reverts status to RETRYING and increments retryCount', async () => {
+  it('Test Case 8: Handler Failure Below Limit - Reverts status to RETRYING and increments retryCount', async () => {
     const eventId = randomUUID();
     const envelope = createValidEnvelope(eventId);
     const handleEventSpy = jest.spyOn(consumer as any, 'handleEvent').mockRejectedValue(new Error('Business logic failed'));
@@ -390,5 +405,205 @@ describe('Inbox Pattern Idempotency Integration Tests', () => {
 
     // Offset must NOT be committed
     expect(mockCommitOffsets).not.toHaveBeenCalled();
+  });
+
+  it('Test Case 9: Retry Exhaustion - Publishes to payments.dlq and marks DLQ_SENT', async () => {
+    const eventId = randomUUID();
+    const envelope = createValidEnvelope(eventId);
+    
+    // Seed record at retryCount = 3 (Attempt 4, exceeding limit of 3)
+    await prismaService.client.inboxEvent.create({
+      data: {
+        eventId,
+        consumer: consumer['groupId'],
+        status: 'RETRYING',
+        retryCount: 3,
+        eventType: envelope.eventType,
+        correlationId: envelope.correlationId,
+        causationId: envelope.causationId,
+        sagaId: envelope.sagaId,
+        timestamp: new Date(envelope.timestamp),
+        version: envelope.version,
+        payload: envelope.payload,
+      },
+    });
+
+    const handleEventSpy = jest.spyOn(consumer as any, 'handleEvent').mockRejectedValue(new Error('Persistent poison failure'));
+    
+    const handler = (global as any).mockEachMessage;
+    await handler({
+      topic: 'payments.initiated',
+      partition: 0,
+      message: {
+        value: Buffer.from(JSON.stringify(envelope)),
+        offset: '60',
+      },
+    });
+
+    // DB record should be transitioned to DLQ_SENT with retryCount = 4
+    const persisted = await repository.findByEventIdAndConsumer(eventId, consumer['groupId']);
+    expect(persisted?.status).toBe('DLQ_SENT');
+    expect(persisted?.retryCount).toBe(4);
+
+    // Should have published to DLQ
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    const publishArg = mockSend.mock.calls[0][0];
+    expect(publishArg.topic).toBe('payments.dlq');
+
+    // Verify message payload
+    const sentMessage = JSON.parse(publishArg.messages[0].value);
+    expect(sentMessage.eventType).toBe('DeadLetterRecord');
+    expect(sentMessage.payload.originalEvent.eventId).toBe(eventId);
+    expect(sentMessage.payload.failureReason).toContain('Persistent poison failure');
+    expect(sentMessage.payload.consumer).toBe(consumer['groupId']);
+    expect(sentMessage.payload.retryCount).toBe(4);
+
+    // Offset is committed to unblock consumer pipeline
+    expect(mockCommitOffsets).toHaveBeenCalledTimes(1);
+    expect(mockCommitOffsets).toHaveBeenCalledWith([
+      { topic: 'payments.initiated', partition: 0, offset: '61' },
+    ]);
+  });
+
+  it('Test Case 10: DLQ Publication Failure - Keeps event in FAILED status, offset uncommitted', async () => {
+    const eventId = randomUUID();
+    const envelope = createValidEnvelope(eventId);
+    
+    // Seed record at retryCount = 3
+    await prismaService.client.inboxEvent.create({
+      data: {
+        eventId,
+        consumer: consumer['groupId'],
+        status: 'RETRYING',
+        retryCount: 3,
+        eventType: envelope.eventType,
+        correlationId: envelope.correlationId,
+        causationId: envelope.causationId,
+        sagaId: envelope.sagaId,
+        timestamp: new Date(envelope.timestamp),
+        version: envelope.version,
+        payload: envelope.payload,
+      },
+    });
+
+    jest.spyOn(consumer as any, 'handleEvent').mockRejectedValue(new Error('Poison message'));
+    mockSend.mockRejectedValueOnce(new Error('Kafka broker unavailable'));
+
+    const handler = (global as any).mockEachMessage;
+
+    await expect(
+      handler({
+        topic: 'payments.initiated',
+        partition: 0,
+        message: {
+          value: Buffer.from(JSON.stringify(envelope)),
+          offset: '70',
+        },
+      }),
+    ).rejects.toThrow('Kafka broker unavailable');
+
+    // DB record status is transitioned to FAILED (recoverable) with retryCount = 4
+    const persisted = await repository.findByEventIdAndConsumer(eventId, consumer['groupId']);
+    expect(persisted?.status).toBe('FAILED');
+    expect(persisted?.retryCount).toBe(4);
+
+    // Offset must NOT be committed
+    expect(mockCommitOffsets).not.toHaveBeenCalled();
+  });
+
+  it('Test Case 11: Duplicate Delivery of DLQ_SENT Event - Skips execution and commits offset', async () => {
+    const eventId = randomUUID();
+    const envelope = createValidEnvelope(eventId);
+
+    // Seed record as DLQ_SENT
+    await prismaService.client.inboxEvent.create({
+      data: {
+        eventId,
+        consumer: consumer['groupId'],
+        status: 'DLQ_SENT',
+        eventType: envelope.eventType,
+        correlationId: envelope.correlationId,
+        causationId: envelope.causationId,
+        sagaId: envelope.sagaId,
+        timestamp: new Date(envelope.timestamp),
+        version: envelope.version,
+        payload: envelope.payload,
+      },
+    });
+
+    const handleEventSpy = jest.spyOn(consumer as any, 'handleEvent');
+    const handler = (global as any).mockEachMessage;
+
+    await handler({
+      topic: 'payments.initiated',
+      partition: 0,
+      message: {
+        value: Buffer.from(JSON.stringify(envelope)),
+        offset: '80',
+      },
+    });
+
+    // Handler must NOT execute
+    expect(handleEventSpy).not.toHaveBeenCalled();
+
+    // Offset committed
+    expect(mockCommitOffsets).toHaveBeenCalledTimes(1);
+    expect(mockCommitOffsets).toHaveBeenCalledWith([
+      { topic: 'payments.initiated', partition: 0, offset: '81' },
+    ]);
+  });
+
+  it('Test Case 12: Manual Replay Reset Lifecycle and Replayer Execution', async () => {
+    const eventId = randomUUID();
+    const envelope = createValidEnvelope(eventId);
+
+    // Seed record as DLQ_SENT
+    await prismaService.client.inboxEvent.create({
+      data: {
+        eventId,
+        consumer: consumer['groupId'],
+        status: 'DLQ_SENT',
+        eventType: envelope.eventType,
+        correlationId: envelope.correlationId,
+        causationId: envelope.causationId,
+        sagaId: envelope.sagaId,
+        timestamp: new Date(envelope.timestamp),
+        version: envelope.version,
+        payload: envelope.payload,
+      },
+    });
+
+    // 1. Prepare for replay (database reset lifecycle)
+    const resetResult = await repository.prepareForReplay(eventId, consumer['groupId']);
+    expect(resetResult).toBe(true);
+
+    const resetRecord = await repository.findByEventIdAndConsumer(eventId, consumer['groupId']);
+    expect(resetRecord?.status).toBe('RETRYING');
+    expect(resetRecord?.retryCount).toBe(0);
+
+    // 2. DeadLetterReplayer execution
+    const producer = moduleFixture.get<KafkaEventProducer>(KafkaEventProducer);
+    const replayer = new DeadLetterReplayer(producer);
+
+    const dlqRecord: DeadLetterRecord = {
+      originalEvent: envelope,
+      failureReason: 'Persistent poison failure',
+      retryCount: 4,
+      consumer: consumer['groupId'],
+      failedAt: new Date().toISOString(),
+      dlqTopic: 'payments.dlq',
+    };
+
+    const replayResult = await replayer.replay(dlqRecord);
+    expect(replayResult.success).toBe(true);
+
+    // Verify it published back to payments.initiated topic
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    const publishArg = mockSend.mock.calls[0][0];
+    expect(publishArg.topic).toBe('payments.initiated');
+    
+    const replayedEvent = JSON.parse(publishArg.messages[0].value);
+    expect(replayedEvent.eventId).toBe(eventId);
+    expect(replayedEvent.correlationId).toBe(envelope.correlationId);
   });
 });

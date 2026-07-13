@@ -5,8 +5,11 @@ import type { ConfigService } from '@surgepay/config';
 import type { BaseEventEnvelope } from '@surgepay/events';
 
 import type { LoggerService } from '../logger';
+import { DEAD_LETTER_EVENT_TYPE, type DeadLetterRecord } from './dead-letter.types';
 import type { BaseInboxRepository } from './inbox.repository';
+import type { KafkaEventProducer } from './producer';
 import { EventSerializer } from './serializer';
+import { resolveDlqTopic } from './topics';
 
 export class EventProcessingInProgressException extends Error {
   constructor(eventId: string, consumer: string) {
@@ -34,6 +37,7 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
   constructor(
     protected readonly config: ConfigService,
     protected readonly logger: LoggerService,
+    protected readonly eventProducer: KafkaEventProducer,
   ) {
     const kafkaConfig = this.config.kafka;
     this.kafka = new Kafka({
@@ -108,8 +112,8 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
         const existing = await this.inboxRepository.findByEventIdAndConsumer(envelope.eventId, this.groupId);
 
         if (existing) {
-          if (existing.status === 'PROCESSED') {
-            this.logger.info('Duplicate event delivery skipped (already processed)', {
+          if (existing.status === 'PROCESSED' || existing.status === 'DLQ_SENT') {
+            this.logger.info(`Duplicate event delivery skipped (already ${existing.status})`, {
               ...logContext,
               duplicate: true,
               inboxStatus: existing.status,
@@ -127,7 +131,7 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
             throw new EventProcessingInProgressException(envelope.eventId, this.groupId);
           }
 
-          // If status is RECEIVED or RETRYING, we proceed to transition and process it
+          // If status is RECEIVED, RETRYING, or FAILED, we proceed to transition and process it
         } else {
           // First time delivery, record as RECEIVED
           try {
@@ -143,7 +147,7 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
               // Re-evaluate the status of the record in DB
               const collided = await this.inboxRepository.findByEventIdAndConsumer(envelope.eventId, this.groupId);
               if (collided) {
-                if (collided.status === 'PROCESSED') {
+                if (collided.status === 'PROCESSED' || collided.status === 'DLQ_SENT') {
                   await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
                   return;
                 }
@@ -158,11 +162,11 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
           }
         }
 
-        // 3. Atomically transition from (RECEIVED, RETRYING) to PROCESSING to claim lock
+        // 3. Atomically transition from (RECEIVED, RETRYING, FAILED) to PROCESSING to claim lock
         const transitioned = await this.inboxRepository.transitionStatus(
           envelope.eventId,
           this.groupId,
-          ['RECEIVED', 'RETRYING'],
+          ['RECEIVED', 'RETRYING', 'FAILED'],
           'PROCESSING',
         );
 
@@ -171,9 +175,9 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
             ...logContext,
             duplicate: true,
           });
-          // Query DB again to see if it is PROCESSING or PROCESSED
+          // Query DB again to see if it is PROCESSING, PROCESSED, or DLQ_SENT
           const current = await this.inboxRepository.findByEventIdAndConsumer(envelope.eventId, this.groupId);
-          if (current && current.status === 'PROCESSED') {
+          if (current && (current.status === 'PROCESSED' || current.status === 'DLQ_SENT')) {
             await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
             return;
           }
@@ -192,21 +196,81 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
           // Commit partition offset
           await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
           this.logger.info(`Successfully processed event ${envelope.eventId} and committed offset`, logContext);
-        } catch (handlerErr) {
-          this.logger.error(`Handler execution failed for event ${envelope.eventId}`, handlerErr as Error, logContext);
+        } catch (handlerErr: unknown) {
+          const error = handlerErr as Error;
+          this.logger.error(`Handler execution failed for event ${envelope.eventId}`, error, logContext);
 
-          // Transition back to RETRYING to allow future processing runs
+          // Transition back to RETRYING or FAILED depending on retry limits
           const currentRecord = await this.inboxRepository.findByEventIdAndConsumer(envelope.eventId, this.groupId);
           const currentRetry = currentRecord?.retryCount ?? 0;
+          const limit = this.config.kafka.consumerRetryLimit;
+          const newRetryCount = currentRetry + 1;
 
-          await this.inboxRepository.updateStatus(
-            envelope.eventId,
-            this.groupId,
-            'RETRYING',
-            currentRetry + 1,
-          );
+          if (newRetryCount <= limit) {
+            // Below retry limit: transition to RETRYING and re-throw
+            this.logger.info(`Event ${envelope.eventId} is below retry limit (${newRetryCount}/${limit}), transitioning to RETRYING`, logContext);
+            await this.inboxRepository.updateStatus(
+              envelope.eventId,
+              this.groupId,
+              'RETRYING',
+              newRetryCount,
+            );
+            throw handlerErr;
+          } else {
+            // Bounded retry limit exhausted: publish to DLQ and transition to DLQ_SENT
+            this.logger.warn(`Event ${envelope.eventId} exhausted retries (${newRetryCount}/${limit}), forwarding to DLQ`, logContext);
 
-          throw handlerErr;
+            const dlqTopic = resolveDlqTopic();
+            const dlqPayload: DeadLetterRecord = {
+              originalEvent: envelope,
+              failureReason: error.message || String(error),
+              retryCount: newRetryCount,
+              consumer: this.groupId,
+              failedAt: new Date().toISOString(),
+              dlqTopic,
+            };
+
+            const dlqEnvelope = {
+              eventId: envelope.eventId, // Preserve original eventId
+              eventType: DEAD_LETTER_EVENT_TYPE,
+              correlationId: envelope.correlationId,
+              causationId: envelope.eventId,
+              sagaId: envelope.sagaId,
+              timestamp: new Date().toISOString(),
+              version: 1,
+              payload: dlqPayload,
+            };
+
+            try {
+              await this.eventProducer.publish(dlqTopic, envelope.eventId, dlqEnvelope);
+              this.logger.info(`DLQ publication succeeded for event ${envelope.eventId} to topic ${dlqTopic}`, logContext);
+
+              // Update inbox status to DLQ_SENT
+              await this.inboxRepository.updateStatus(
+                envelope.eventId,
+                this.groupId,
+                'DLQ_SENT',
+                newRetryCount,
+              );
+
+              // Commit partition offset
+              await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
+              this.logger.info(`Inbox marked DLQ_SENT and offset committed for event ${envelope.eventId}`, logContext);
+            } catch (dlqErr: unknown) {
+              const error = dlqErr as Error;
+              this.logger.error(`DLQ publication failed for event ${envelope.eventId}`, error, logContext);
+
+              // Transition to FAILED so it is retried next time (offset remains uncommitted)
+              await this.inboxRepository.updateStatus(
+                envelope.eventId,
+                this.groupId,
+                'FAILED',
+                newRetryCount,
+              );
+
+              throw dlqErr;
+            }
+          }
         }
       },
     });
