@@ -12,6 +12,8 @@ import { RetryPolicy } from './retry/retry.policy';
 export class HttpClient {
   private readonly axiosInstance: AxiosInstance;
   private readonly retryPolicy: RetryPolicy;
+  private readonly httpAgent: http.Agent;
+  private readonly httpsAgent: https.Agent;
 
   constructor(
     public readonly serviceName: string,
@@ -27,11 +29,11 @@ export class HttpClient {
       ? parseInt(process.env.HTTP_KEEP_ALIVE_MAX_SOCKETS, 10)
       : 100;
 
-    const httpAgent = new http.Agent({
+    this.httpAgent = new http.Agent({
       keepAlive,
       maxSockets,
     });
-    const httpsAgent = new https.Agent({
+    this.httpsAgent = new https.Agent({
       keepAlive,
       maxSockets,
     });
@@ -39,10 +41,15 @@ export class HttpClient {
     this.axiosInstance = axios.create({
       baseURL,
       timeout,
-      httpAgent,
-      httpsAgent,
+      httpAgent: this.httpAgent,
+      httpsAgent: this.httpsAgent,
     });
     this.retryPolicy = new RetryPolicy(this.retries, this.retryDelay, this.logger);
+  }
+
+  destroy(): void {
+    this.httpAgent.destroy();
+    this.httpsAgent.destroy();
   }
 
   /**

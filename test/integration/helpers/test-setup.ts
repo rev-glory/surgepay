@@ -128,24 +128,55 @@ export async function setupIntegrationEnvironment() {
 }
 
 export async function teardownIntegrationEnvironment() {
-  if (gatewayApp) {
-    await gatewayApp.close();
+  try {
+    if (gatewayApp) {
+      await gatewayApp.close();
+    }
+  } catch (err) {
+    console.error('Error closing gatewayApp during teardown:', err);
+  } finally {
     gatewayApp = null;
   }
-  if (merchantApp) {
-    await merchantApp.close();
+
+  try {
+    if (merchantApp) {
+      await merchantApp.close();
+    }
+  } catch (err) {
+    console.error('Error closing merchantApp during teardown:', err);
+  } finally {
     merchantApp = null;
   }
-  if (idempotencyApp) {
-    await idempotencyApp.close();
+
+  try {
+    if (idempotencyApp) {
+      await idempotencyApp.close();
+    }
+  } catch (err) {
+    console.error('Error closing idempotencyApp during teardown:', err);
+  } finally {
     idempotencyApp = null;
   }
-  if (redisClient) {
-    await redisClient.quit();
+
+  try {
+    if (redisClient) {
+      if (redisClient.status !== 'end') {
+        await redisClient.quit();
+      }
+    }
+  } catch (err) {
+    console.error('Error quitting redisClient during teardown:', err);
+  } finally {
     redisClient = null;
   }
-  if (prismaClient) {
-    await prismaClient.$disconnect();
+
+  try {
+    if (prismaClient) {
+      await prismaClient.$disconnect();
+    }
+  } catch (err) {
+    console.error('Error disconnecting prismaClient during teardown:', err);
+  } finally {
     prismaClient = null;
   }
 }

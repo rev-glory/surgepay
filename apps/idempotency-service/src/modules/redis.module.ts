@@ -1,4 +1,4 @@
-import { Global, Module } from '@nestjs/common';
+import { Global, Inject, Module, OnModuleDestroy } from '@nestjs/common';
 import Redis from 'ioredis';
 
 import { ConfigModule, ConfigService } from '@surgepay/config';
@@ -25,4 +25,16 @@ import { RedisRepository } from '../repositories/redis.repository';
   ],
   exports: ['REDIS_CLIENT', RedisRepository],
 })
-export class RedisModule {}
+export class RedisModule implements OnModuleDestroy {
+  constructor(@Inject('REDIS_CLIENT') private readonly redis: Redis) {}
+
+  async onModuleDestroy(): Promise<void> {
+    try {
+      if (this.redis.status !== 'end') {
+        await this.redis.quit();
+      }
+    } catch (e) {
+      // Already closed or failed
+    }
+  }
+}

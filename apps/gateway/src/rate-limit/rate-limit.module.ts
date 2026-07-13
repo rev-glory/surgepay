@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Inject, Module, OnModuleDestroy } from '@nestjs/common';
 import Redis from 'ioredis';
 
 import { LoggerModule } from '@surgepay/common';
@@ -27,4 +27,16 @@ import { RedisRateLimitRepository } from './redis-rate-limit.repository';
   ],
   exports: [RateLimitService, RedisRateLimitRepository],
 })
-export class RateLimitModule {}
+export class RateLimitModule implements OnModuleDestroy {
+  constructor(@Inject('REDIS_CLIENT') private readonly redis: Redis) {}
+
+  async onModuleDestroy(): Promise<void> {
+    try {
+      if (this.redis.status !== 'end') {
+        await this.redis.quit();
+      }
+    } catch (e) {
+      // Already closed or failed
+    }
+  }
+}
