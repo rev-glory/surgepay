@@ -271,6 +271,7 @@ describe('Shared Messaging & Kafka Publisher Spec', () => {
       partition: null,
       offset: null,
       lastAttemptAt: null,
+      traceHeaders: null,
     });
 
     beforeEach(() => {
@@ -284,13 +285,17 @@ describe('Shared Messaging & Kafka Publisher Spec', () => {
     });
 
     it('verifies valid envelope, resolves topic from registry, and delegates to producer', async () => {
-      await publisher.publish(mockDbEvent(mockDbEnvelope));
+      const event = mockDbEvent(mockDbEnvelope);
+      const traceHeaders = { traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' };
+      event.traceHeaders = traceHeaders;
+      await publisher.publish(event);
 
       expect(mockProducer.publish).toHaveBeenCalledTimes(1);
       expect(mockProducer.publish).toHaveBeenCalledWith(
         'payments.initiated',
         'payment_agg_123',
         mockDbEnvelope,
+        traceHeaders,
       );
     });
 

@@ -84,7 +84,12 @@ export class KafkaOutboxPublisher implements EventPublisher {
 
     try {
       // Kafka partition key decision using aggregateId (representing paymentId)
-      const metadata = await this.producer.publish(topic, event.aggregateId, envelope);
+      const metadata = await this.producer.publish(
+        topic,
+        event.aggregateId,
+        envelope,
+        (event.traceHeaders as Record<string, string>) || undefined,
+      );
       const record = metadata[0];
       if (!record) {
         throw new Error('Kafka broker returned empty metadata array');

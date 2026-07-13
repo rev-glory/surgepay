@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
 
+import { context, propagation } from '@opentelemetry/api';
+
 import { OutboxStatus } from '../generated/client';
 
 export class OutboxEventEntity {
@@ -16,6 +18,7 @@ export class OutboxEventEntity {
     public readonly createdAt: Date,
     public readonly publishedAt: Date | null,
     public readonly retryCount: number,
+    public readonly traceHeaders: Record<string, string> | null = null,
   ) {}
 
   static create(params: {
@@ -40,6 +43,13 @@ export class OutboxEventEntity {
       payload: params.payload,
     };
 
+    const activeTraceHeaders: Record<string, string> = {};
+    try {
+      propagation.inject(context.active(), activeTraceHeaders);
+    } catch {
+      // Safe fallback
+    }
+
     return new OutboxEventEntity(
       eventId,
       params.aggregateId,
@@ -53,6 +63,7 @@ export class OutboxEventEntity {
       new Date(),
       null,
       0,
+      activeTraceHeaders,
     );
   }
 }

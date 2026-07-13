@@ -32,6 +32,7 @@ model OutboxEvent {
   partition     Int?
   offset        String?
   lastAttemptAt DateTime?    @db.Timestamptz(6)
+  traceHeaders  Json?
 
   @@index([status])
   @@index([createdAt])

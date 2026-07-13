@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { LoggerService } from '@surgepay/common';
 
 import { OutboxEventEntity } from '../entities/outbox-event.entity';
-import { OutboxStatus, Prisma } from '../generated/client';
+import { OutboxEvent, OutboxStatus, Prisma } from '../generated/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -15,20 +15,7 @@ export class OutboxRepository {
     this.logger.setContext('OutboxRepository');
   }
 
-  private mapToEntity(model: {
-    id: string;
-    aggregateId: string;
-    aggregateType: string;
-    eventType: string;
-    payload: Prisma.JsonValue;
-    status: OutboxStatus;
-    requestId: string;
-    correlationId: string;
-    causationId: string;
-    createdAt: Date;
-    publishedAt: Date | null;
-    retryCount: number;
-  }): OutboxEventEntity {
+  private mapToEntity(model: OutboxEvent): OutboxEventEntity {
     return new OutboxEventEntity(
       model.id,
       model.aggregateId,
@@ -42,6 +29,7 @@ export class OutboxRepository {
       model.createdAt,
       model.publishedAt,
       model.retryCount,
+      model.traceHeaders as Record<string, string> | null,
     );
   }
 
@@ -61,6 +49,7 @@ export class OutboxRepository {
         createdAt: entity.createdAt,
         publishedAt: entity.publishedAt,
         retryCount: entity.retryCount,
+        traceHeaders: (entity.traceHeaders || {}) as Prisma.InputJsonValue,
       },
     });
 

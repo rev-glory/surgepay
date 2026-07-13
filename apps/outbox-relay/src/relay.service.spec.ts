@@ -97,6 +97,7 @@ describe('OutboxRelayService', () => {
     partition: null,
     offset: null,
     lastAttemptAt: new Date(),
+    traceHeaders: null,
   });
 
   it('empty batches run stale recovery but perform no publisher delegation', async () => {

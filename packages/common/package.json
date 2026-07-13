@@ -11,7 +11,8 @@
     "build": "tsc",
     "clean": "rimraf dist",
     "lint": "eslint . --max-warnings 0",
-    "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\"",
+    "test": "jest"
   },
   "dependencies": {
     "@surgepay/config": "workspace:*",
