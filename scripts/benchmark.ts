@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import { AddressInfo } from 'net';
 import * as path from 'path';
 
 import * as dotenv from 'dotenv';
@@ -16,6 +17,7 @@ if (!fs.existsSync(envPath)) {
   envPath = path.resolve(__dirname, '..', envFile);
 }
 dotenv.config({ path: envPath });
+process.env.RATE_LIMIT_DEFAULT_LIMIT = '100000';
 
 import { setupE2EEnvironment, teardownE2EEnvironment } from '../test/helpers/test-setup';
 import { createTestMerchant, createTestOrder, clearDatabase } from '../test/helpers/db-helper';
@@ -39,8 +41,11 @@ async function runBenchmark() {
   console.log('================================================================\n');
 
   console.log('📦 Spin up local isolated container environment...');
-  const environment = await setupE2EEnvironment();
-  const gatewayUrl = process.env.GATEWAY_URL || `http://127.0.0.1:3000`;
+  const e2eEnv = await setupE2EEnvironment();
+  const gatewayPort = (e2eEnv.gatewayApp.getHttpServer().address() as AddressInfo).port;
+  const gatewayUrl = `http://127.0.0.1:${gatewayPort}`;
+  console.log(`📡 Gateway App listening on port: ${gatewayPort}`);
+  console.log(`📡 Benchmark targeting Gateway URL: ${gatewayUrl}`);
   const apiKey = MERCHANT_FIXTURES.active.apiKey;
 
   console.log('🧹 Wipe databases and Redis state...');
@@ -79,8 +84,14 @@ async function runBenchmark() {
   // Warmup phase
   console.log(`🔥 Starting warmup phase (${warmupIterations} iterations)...`);
   for (let i = 0; i < warmupIterations; i++) {
-    const { orderId, idempotencyKey } = orders[i];
-    await fetch(`${gatewayUrl}/api/v1/payments`, {
+    const order = orders[i];
+
+    if (!order) {
+      throw new Error(`Warmup order not found at index ${i}`);
+    }
+
+    const { orderId, idempotencyKey } = order;
+    const response = await fetch(`${gatewayUrl}/api/v1/payments`, {
       method: 'POST',
       headers: {
         'x-api-key': apiKey,
@@ -96,6 +107,14 @@ async function runBenchmark() {
         paymentMethod: 'card',
       }),
     });
+
+    if (response.status !== 202) {
+      const body = await response.text();
+
+      throw new Error(
+        `Warmup request failed: HTTP ${response.status} ${response.statusText}\n${body}`,
+      );
+    }
   }
   console.log('✓ Warmup phase complete. JIT compiler and sockets are warmed.\n');
 
@@ -110,7 +129,13 @@ async function runBenchmark() {
   const startTime = performance.now();
 
   const runRequest = async (index: number) => {
-    const { orderId, idempotencyKey } = activeBenchmarkOrders[index];
+    const order = activeBenchmarkOrders[index];
+
+    if (!order) {
+      throw new Error(`Benchmark order not found at index ${index}`);
+    }
+
+    const { orderId, idempotencyKey } = order;
     const reqStartTime = performance.now();
 
     try {
@@ -138,11 +163,31 @@ async function runBenchmark() {
         successfulRequests++;
       } else {
         failedRequests++;
+
+        if (failedRequests <= 10) {
+          const body = await response.text();
+
+          console.error('❌ Request failed', {
+            status: response.status,
+            statusText: response.statusText,
+            body,
+            orderId,
+            idempotencyKey,
+          });
+        }
       }
     } catch (error) {
       const duration = performance.now() - reqStartTime;
       latencies.push(duration);
       failedRequests++;
+
+      if (failedRequests <= 10) {
+        console.error('❌ Request threw an error', {
+          error,
+          orderId,
+          idempotencyKey,
+        });
+      }
     }
   };
 
@@ -168,13 +213,32 @@ async function runBenchmark() {
   const totalDurationSeconds = totalDurationMs / 1000;
   const rps = (numRequests / totalDurationMs) * 1000;
   
-  const getPercentile = (p: number) => {
+  const getPercentile = (p: number): number => {
+    if (latencies.length === 0) {
+      throw new Error('Cannot calculate percentile: no latency samples recorded');
+    }
+
     const index = Math.ceil((p / 100) * latencies.length) - 1;
-    return latencies[Math.max(0, index)];
+    const value = latencies[Math.max(0, index)];
+
+    if (value === undefined) {
+      throw new Error(`Latency sample not found for percentile ${p}`);
+    }
+
+    return value;
   };
+
+  if (latencies.length === 0) {
+    throw new Error('Benchmark completed without recording latency samples');
+  }
 
   const min = latencies[0];
   const max = latencies[latencies.length - 1];
+
+  if (min === undefined || max === undefined) {
+    throw new Error('Unable to calculate latency bounds');
+  }
+
   const sum = latencies.reduce((a, b) => a + b, 0);
   const avg = sum / latencies.length;
   const median = getPercentile(50);
@@ -202,6 +266,7 @@ async function runBenchmark() {
   console.log('🧹 Shutting down environment containers...');
   await teardownE2EEnvironment();
   console.log('🏁 Benchmark complete. Clean shutdown.');
+  process.exit(0);
 }
 
 runBenchmark().catch(async (error) => {
