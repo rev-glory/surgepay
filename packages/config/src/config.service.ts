@@ -6,6 +6,7 @@ import {
   HttpConfig,
   KafkaConfig,
   LoggingConfig,
+  OutboxConfig,
   RedisConfig,
   SecurityConfig,
   ServicesConfig,
@@ -46,5 +47,9 @@ export class ConfigService {
 
   get services(): ServicesConfig {
     return this.nestConfigService.getOrThrow<ServicesConfig>('services');
+  }
+
+  get outbox(): OutboxConfig {
+    return this.nestConfigService.getOrThrow<OutboxConfig>('outbox');
   }
 }

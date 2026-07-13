@@ -5,6 +5,7 @@ import { databaseSchema } from './schemas/database.schema';
 import { httpSchema } from './schemas/http.schema';
 import { kafkaSchema } from './schemas/kafka.schema';
 import { loggingSchema } from './schemas/logging.schema';
+import { outboxSchema } from './schemas/outbox.schema';
 import { redisSchema } from './schemas/redis.schema';
 import { securitySchema } from './schemas/security.schema';
 import { servicesSchema } from './schemas/services.schema';
@@ -21,7 +22,8 @@ export const environmentSchema = z
   .merge(loggingSchema)
   .merge(telemetrySchema)
   .merge(securitySchema)
-  .merge(servicesSchema);
+  .merge(servicesSchema)
+  .merge(outboxSchema);
 
 export type Environment = z.infer<typeof environmentSchema>;
 
