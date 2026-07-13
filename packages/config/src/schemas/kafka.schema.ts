@@ -5,4 +5,5 @@ export const kafkaSchema = z.object({
   KAFKA_CLIENT_ID: z.string().default('surgepay'),
   KAFKA_SSL: z.preprocess((val) => val === 'true', z.boolean().default(false)),
   KAFKA_SASL: z.preprocess((val) => val === 'true', z.boolean().default(false)),
+  KAFKA_CONSUMER_GROUP_ID: z.string().default('surgepay-consumer-group'),
 });

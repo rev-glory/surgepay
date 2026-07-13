@@ -12,6 +12,8 @@
       "@surgepay/config/*": ["../../packages/config/dist/*"],
       "@surgepay/contracts": ["../../packages/contracts/dist/index"],
       "@surgepay/contracts/*": ["../../packages/contracts/dist/*"],
+      "@surgepay/events": ["../../packages/events/dist/index"],
+      "@surgepay/events/*": ["../../packages/events/dist/*"],
       "@database": ["../../packages/database/dist/index"],
       "@database/*": ["../../packages/database/dist/*"]
     }

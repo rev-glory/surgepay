@@ -23,6 +23,7 @@ export interface KafkaConfig {
   clientId: string;
   ssl: boolean;
   sasl: boolean;
+  consumerGroupId: string;
 }
 
 export interface HttpConfig {
