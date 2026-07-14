@@ -20,6 +20,9 @@ export class SagaRepository {
       model.correlationId,
       model.status,
       model.orderValidationStatus,
+      model.merchantId,
+      model.amount,
+      model.currency,
       model.version,
       model.startedAt,
       model.completedAt,
@@ -53,6 +56,9 @@ export class SagaRepository {
           correlationId: entity.correlationId,
           status: entity.status,
           orderValidationStatus: entity.orderValidationStatus,
+          merchantId: entity.merchantId,
+          amount: entity.amount,
+          currency: entity.currency,
           version: entity.version,
           startedAt: entity.startedAt,
           completedAt: entity.completedAt,
@@ -193,6 +199,7 @@ export class SagaRepository {
         orderValidationStatus: {
           not: OrderValidationStatus.REJECTED,
         },
+        failureReason: null, // Exclude failed ones too
       },
       orderBy: {
         createdAt: 'asc',

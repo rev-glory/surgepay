@@ -23,12 +23,12 @@ import {
   SagaTransitionType,
 } from '../../generated/client';
 import { OrderInboxRepository } from '../../repositories/inbox.repository';
+import { CommandDispatcher } from '../dispatchers/command.dispatcher';
 import { SagaInstanceEntity } from '../entities/saga-instance.entity';
 import { SagaRepository } from '../repositories/saga.repository';
 import { SagaService } from '../saga.service';
 import { SagaOrderEventsConsumer } from './order-events.handler';
 
-// Define the mock consumer outside so the mock factory can return it
 let capturedEachMessage:
   | ((options: {
       topic: string;
@@ -162,6 +162,10 @@ describe('SagaOrderEventsConsumer & Saga Invariants', () => {
         { provide: LoggerService, useValue: loggerMock },
         { provide: KafkaEventProducer, useValue: producerMock },
         { provide: MetricsService, useValue: metricsMock },
+        {
+          provide: CommandDispatcher,
+          useValue: { dispatch: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -182,6 +186,9 @@ describe('SagaOrderEventsConsumer & Saga Invariants', () => {
         'corr_123',
         SagaStatus.REVERSED,
         OrderValidationStatus.PENDING,
+        'merch_xyz',
+        5000,
+        'USD',
         0,
         new Date(),
         null,
@@ -200,6 +207,9 @@ describe('SagaOrderEventsConsumer & Saga Invariants', () => {
         'corr_123',
         SagaStatus.LEDGER_PENDING,
         OrderValidationStatus.REJECTED,
+        'merch_xyz',
+        5000,
+        'USD',
         0,
         new Date(),
         null,
@@ -218,6 +228,9 @@ describe('SagaOrderEventsConsumer & Saga Invariants', () => {
         'corr_123',
         SagaStatus.LEDGER_PENDING,
         OrderValidationStatus.CONFIRMED,
+        'merch_xyz',
+        5000,
+        'USD',
         0,
         new Date(),
         null,
@@ -235,6 +248,9 @@ describe('SagaOrderEventsConsumer & Saga Invariants', () => {
         'corr_123',
         SagaStatus.LEDGER_PENDING,
         OrderValidationStatus.CONFIRMED,
+        'merch_xyz',
+        5000,
+        'USD',
         0,
         new Date(),
         null,
@@ -253,6 +269,9 @@ describe('SagaOrderEventsConsumer & Saga Invariants', () => {
         'corr_123',
         SagaStatus.LEDGER_PENDING,
         OrderValidationStatus.REJECTED,
+        'merch_xyz',
+        5000,
+        'USD',
         0,
         new Date(),
         null,
@@ -271,6 +290,9 @@ describe('SagaOrderEventsConsumer & Saga Invariants', () => {
         'corr_123',
         SagaStatus.CLOSED,
         OrderValidationStatus.CONFIRMED,
+        'merch_xyz',
+        5000,
+        'USD',
         0,
         new Date(),
         new Date(),
@@ -301,6 +323,9 @@ describe('SagaOrderEventsConsumer & Saga Invariants', () => {
       const saga = SagaInstanceEntity.create({
         paymentId: 'pay_xyz',
         correlationId: 'corr_xyz',
+        merchantId: 'merch_xyz',
+        amount: 5000,
+        currency: 'USD',
       });
 
       sagaRepositoryMock.findById.mockResolvedValue(saga);
@@ -341,6 +366,9 @@ describe('SagaOrderEventsConsumer & Saga Invariants', () => {
       const saga = SagaInstanceEntity.create({
         paymentId: 'pay_xyz',
         correlationId: 'corr_xyz',
+        merchantId: 'merch_xyz',
+        amount: 5000,
+        currency: 'USD',
       });
 
       sagaRepositoryMock.findById.mockResolvedValue(saga);
@@ -423,6 +451,9 @@ describe('SagaOrderEventsConsumer & Saga Invariants', () => {
       const saga = SagaInstanceEntity.create({
         paymentId: 'pay_xyz',
         correlationId: 'corr_xyz',
+        merchantId: 'merch_xyz',
+        amount: 5000,
+        currency: 'USD',
       });
 
       sagaRepositoryMock.findById.mockResolvedValue(saga);

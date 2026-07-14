@@ -9,6 +9,7 @@ import {
 } from '@surgepay/common';
 import {
   BaseEventEnvelope,
+  CHECK_ORDER_ELIGIBILITY,
   CHECK_PAYOUT_ELIGIBILITY,
   NOTIFY_MERCHANT,
   RECORD_LEDGER_ENTRY,
@@ -24,6 +25,7 @@ const SUPPORTED_COMMANDS = new Set<string>([
   RESERVE_BALANCE,
   REVERSE_BALANCE,
   NOTIFY_MERCHANT,
+  CHECK_ORDER_ELIGIBILITY,
 ]);
 
 @Injectable()

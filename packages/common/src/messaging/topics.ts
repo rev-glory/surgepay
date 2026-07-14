@@ -15,6 +15,8 @@ import {
   REVERSE_LEDGER_ENTRY,
   BALANCE_RESERVED,
   BALANCE_RESERVATION_FAILED,
+  ELIGIBILITY_APPROVED,
+  ELIGIBILITY_DENIED,
 } from '@surgepay/events';
 
 export const TOPIC_REGISTRY: Record<string, string> = {
@@ -37,6 +39,8 @@ export const TOPIC_REGISTRY: Record<string, string> = {
   [LEDGER_REVERSED]: 'ledger.events',
   [BALANCE_RESERVED]: 'balance.events',
   [BALANCE_RESERVATION_FAILED]: 'balance.events',
+  [ELIGIBILITY_APPROVED]: 'risk.events',
+  [ELIGIBILITY_DENIED]: 'risk.events',
   'payments.dlq': 'payments.dlq',
 };
 

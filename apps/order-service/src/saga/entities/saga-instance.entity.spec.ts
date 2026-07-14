@@ -1,4 +1,4 @@
-import { OrderValidationStatus,SagaStatus } from '../../generated/client';
+import { OrderValidationStatus, SagaStatus } from '../../generated/client';
 import { SagaInstanceEntity } from './saga-instance.entity';
 
 describe('SagaInstanceEntity', () => {
@@ -7,11 +7,20 @@ describe('SagaInstanceEntity', () => {
 
   describe('creation', () => {
     it('should successfully instantiate in LEDGER_PENDING status', () => {
-      const entity = SagaInstanceEntity.create({ paymentId, correlationId });
+      const entity = SagaInstanceEntity.create({
+        paymentId,
+        correlationId,
+        merchantId: 'merch_xyz',
+        amount: 5000,
+        currency: 'USD',
+      });
 
       expect(entity.id).toBe(correlationId);
       expect(entity.correlationId).toBe(correlationId);
       expect(entity.paymentId).toBe(paymentId);
+      expect(entity.merchantId).toBe('merch_xyz');
+      expect(entity.amount).toBe(5000);
+      expect(entity.currency).toBe('USD');
       expect(entity.status).toBe(SagaStatus.LEDGER_PENDING);
       expect(entity.orderValidationStatus).toBe(OrderValidationStatus.PENDING);
       expect(entity.version).toBe(0);
@@ -27,6 +36,9 @@ describe('SagaInstanceEntity', () => {
           correlationId,
           SagaStatus.LEDGER_PENDING,
           OrderValidationStatus.PENDING,
+          'merch_xyz',
+          5000,
+          'USD',
           0,
           new Date(),
           null,
@@ -39,7 +51,13 @@ describe('SagaInstanceEntity', () => {
 
   describe('state transitions', () => {
     it('should allow valid forward flow step-by-step', () => {
-      const entity = SagaInstanceEntity.create({ paymentId, correlationId });
+      const entity = SagaInstanceEntity.create({
+        paymentId,
+        correlationId,
+        merchantId: 'merch_xyz',
+        amount: 5000,
+        currency: 'USD',
+      });
 
       // Invariant: Must confirm order before transitioning to LEDGER_RECORDED
       entity.confirmOrder();
@@ -76,7 +94,13 @@ describe('SagaInstanceEntity', () => {
 
     it('should allow transitions into REVERSED state for intermediate failures after compensation', () => {
       // Test ELIGIBILITY_PENDING -> REVERSED -> CLOSED
-      const saga1 = SagaInstanceEntity.create({ paymentId, correlationId });
+      const saga1 = SagaInstanceEntity.create({
+        paymentId,
+        correlationId,
+        merchantId: 'merch_xyz',
+        amount: 5000,
+        currency: 'USD',
+      });
       saga1.confirmOrder();
       saga1.transitionTo(SagaStatus.LEDGER_RECORDED);
       saga1.transitionTo(SagaStatus.ELIGIBILITY_PENDING);
@@ -86,7 +110,13 @@ describe('SagaInstanceEntity', () => {
       expect(saga1.status).toBe(SagaStatus.CLOSED);
 
       // Test BALANCE_PENDING -> REVERSED -> CLOSED
-      const saga2 = SagaInstanceEntity.create({ paymentId, correlationId });
+      const saga2 = SagaInstanceEntity.create({
+        paymentId,
+        correlationId,
+        merchantId: 'merch_xyz',
+        amount: 5000,
+        currency: 'USD',
+      });
       saga2.confirmOrder();
       saga2.transitionTo(SagaStatus.LEDGER_RECORDED);
       saga2.transitionTo(SagaStatus.ELIGIBILITY_PENDING);
@@ -97,7 +127,13 @@ describe('SagaInstanceEntity', () => {
       expect(saga2.status).toBe(SagaStatus.CLOSED);
 
       // Test BALANCE_RESERVED -> REVERSED -> CLOSED
-      const saga3 = SagaInstanceEntity.create({ paymentId, correlationId });
+      const saga3 = SagaInstanceEntity.create({
+        paymentId,
+        correlationId,
+        merchantId: 'merch_xyz',
+        amount: 5000,
+        currency: 'USD',
+      });
       saga3.confirmOrder();
       saga3.transitionTo(SagaStatus.LEDGER_RECORDED);
       saga3.transitionTo(SagaStatus.ELIGIBILITY_PENDING);
@@ -110,7 +146,13 @@ describe('SagaInstanceEntity', () => {
     });
 
     it('should reject invalid transitions (skips)', () => {
-      const entity = SagaInstanceEntity.create({ paymentId, correlationId });
+      const entity = SagaInstanceEntity.create({
+        paymentId,
+        correlationId,
+        merchantId: 'merch_xyz',
+        amount: 5000,
+        currency: 'USD',
+      });
 
       // Skips LEDGER_RECORDED
       expect(() => {
@@ -119,7 +161,13 @@ describe('SagaInstanceEntity', () => {
     });
 
     it('should reject backward transitions', () => {
-      const entity = SagaInstanceEntity.create({ paymentId, correlationId });
+      const entity = SagaInstanceEntity.create({
+        paymentId,
+        correlationId,
+        merchantId: 'merch_xyz',
+        amount: 5000,
+        currency: 'USD',
+      });
       entity.confirmOrder();
       entity.transitionTo(SagaStatus.LEDGER_RECORDED);
       entity.transitionTo(SagaStatus.ELIGIBILITY_PENDING);
@@ -131,7 +179,13 @@ describe('SagaInstanceEntity', () => {
     });
 
     it('should reject transitions from terminal CLOSED state', () => {
-      const entity = SagaInstanceEntity.create({ paymentId, correlationId });
+      const entity = SagaInstanceEntity.create({
+        paymentId,
+        correlationId,
+        merchantId: 'merch_xyz',
+        amount: 5000,
+        currency: 'USD',
+      });
       entity.confirmOrder();
       entity.transitionTo(SagaStatus.LEDGER_RECORDED);
       entity.transitionTo(SagaStatus.ELIGIBILITY_PENDING);
@@ -148,7 +202,13 @@ describe('SagaInstanceEntity', () => {
     });
 
     it('should do nothing if transitioning to the current state', () => {
-      const entity = SagaInstanceEntity.create({ paymentId, correlationId });
+      const entity = SagaInstanceEntity.create({
+        paymentId,
+        correlationId,
+        merchantId: 'merch_xyz',
+        amount: 5000,
+        currency: 'USD',
+      });
       entity.transitionTo(SagaStatus.LEDGER_PENDING);
       expect(entity.status).toBe(SagaStatus.LEDGER_PENDING);
     });

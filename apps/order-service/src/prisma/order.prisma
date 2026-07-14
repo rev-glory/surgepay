@@ -91,6 +91,9 @@ model SagaInstance {
   correlationId         String                @unique
   status                SagaStatus            @default(LEDGER_PENDING)
   orderValidationStatus OrderValidationStatus @default(PENDING)
+  merchantId            String
+  amount                Int
+  currency              String
   version               Int                   @default(0)
   failureReason         String?
   failedAt              DateTime?             @db.Timestamptz(6)

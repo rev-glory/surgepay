@@ -60,16 +60,22 @@ describe('SagaRepository', () => {
 
   const correlationId = 'corr_998877';
   const paymentId = 'pay_554433';
+  const merchantId = 'merch_xyz';
+  const amount = 5000;
+  const currency = 'USD';
 
   describe('create', () => {
     it('should invoke prisma.create with matching properties and return the entity', async () => {
-      const entity = SagaInstanceEntity.create({ paymentId, correlationId });
+      const entity = SagaInstanceEntity.create({ paymentId, correlationId, merchantId, amount, currency });
       const dbMockResponse = {
         id: entity.id,
         paymentId: entity.paymentId,
         correlationId: entity.correlationId,
         status: entity.status,
         orderValidationStatus: entity.orderValidationStatus,
+        merchantId: entity.merchantId,
+        amount: entity.amount,
+        currency: entity.currency,
         version: entity.version,
         startedAt: entity.startedAt,
         completedAt: entity.completedAt,
@@ -90,6 +96,9 @@ describe('SagaRepository', () => {
           correlationId: entity.correlationId,
           status: entity.status,
           orderValidationStatus: entity.orderValidationStatus,
+          merchantId: entity.merchantId,
+          amount: entity.amount,
+          currency: entity.currency,
           version: entity.version,
           startedAt: entity.startedAt,
           completedAt: entity.completedAt,
@@ -100,18 +109,24 @@ describe('SagaRepository', () => {
       });
       expect(result.id).toBe(entity.id);
       expect(result.correlationId).toBe(entity.correlationId);
+      expect(result.merchantId).toBe(entity.merchantId);
+      expect(result.amount).toBe(entity.amount);
+      expect(result.currency).toBe(entity.currency);
     });
   });
 
   describe('findById', () => {
     it('should query findUnique by id and return mapped entity', async () => {
-      const entity = SagaInstanceEntity.create({ paymentId, correlationId });
+      const entity = SagaInstanceEntity.create({ paymentId, correlationId, merchantId, amount, currency });
       const dbMockResponse = {
         id: entity.id,
         paymentId: entity.paymentId,
         correlationId: entity.correlationId,
         status: entity.status,
         orderValidationStatus: entity.orderValidationStatus,
+        merchantId: entity.merchantId,
+        amount: entity.amount,
+        currency: entity.currency,
         version: entity.version,
         startedAt: entity.startedAt,
         completedAt: entity.completedAt,
@@ -130,18 +145,24 @@ describe('SagaRepository', () => {
       });
       expect(result).toBeInstanceOf(SagaInstanceEntity);
       expect(result!.id).toBe(entity.id);
+      expect(result!.merchantId).toBe(entity.merchantId);
+      expect(result!.amount).toBe(entity.amount);
+      expect(result!.currency).toBe(entity.currency);
     });
   });
 
   describe('findByPaymentId', () => {
     it('should query findUnique by paymentId and return mapped entity', async () => {
-      const entity = SagaInstanceEntity.create({ paymentId, correlationId });
+      const entity = SagaInstanceEntity.create({ paymentId, correlationId, merchantId, amount, currency });
       const dbMockResponse = {
         id: entity.id,
         paymentId: entity.paymentId,
         correlationId: entity.correlationId,
         status: entity.status,
         orderValidationStatus: entity.orderValidationStatus,
+        merchantId: entity.merchantId,
+        amount: entity.amount,
+        currency: entity.currency,
         version: entity.version,
         startedAt: entity.startedAt,
         completedAt: entity.completedAt,
@@ -165,13 +186,16 @@ describe('SagaRepository', () => {
 
   describe('findByCorrelationId', () => {
     it('should query findUnique by correlationId and return mapped entity', async () => {
-      const entity = SagaInstanceEntity.create({ paymentId, correlationId });
+      const entity = SagaInstanceEntity.create({ paymentId, correlationId, merchantId, amount, currency });
       const dbMockResponse = {
         id: entity.id,
         paymentId: entity.paymentId,
         correlationId: entity.correlationId,
         status: entity.status,
         orderValidationStatus: entity.orderValidationStatus,
+        merchantId: entity.merchantId,
+        amount: entity.amount,
+        currency: entity.currency,
         version: entity.version,
         startedAt: entity.startedAt,
         completedAt: entity.completedAt,
@@ -195,7 +219,7 @@ describe('SagaRepository', () => {
 
   describe('update', () => {
     it('should query current version, verify locking, call update, and commit transitions', async () => {
-      const entity = SagaInstanceEntity.create({ paymentId, correlationId });
+      const entity = SagaInstanceEntity.create({ paymentId, correlationId, merchantId, amount, currency });
       entity.confirmOrder();
       entity.transitionTo(SagaStatus.LEDGER_RECORDED);
 
@@ -205,6 +229,9 @@ describe('SagaRepository', () => {
         correlationId: entity.correlationId,
         status: SagaStatus.LEDGER_PENDING,
         orderValidationStatus: OrderValidationStatus.PENDING,
+        merchantId: entity.merchantId,
+        amount: entity.amount,
+        currency: entity.currency,
         version: 0,
         startedAt: entity.startedAt,
         completedAt: null,
@@ -222,6 +249,9 @@ describe('SagaRepository', () => {
         correlationId: entity.correlationId,
         status: SagaStatus.LEDGER_RECORDED,
         orderValidationStatus: OrderValidationStatus.CONFIRMED,
+        merchantId: entity.merchantId,
+        amount: entity.amount,
+        currency: entity.currency,
         version: 1, // incremented
         startedAt: entity.startedAt,
         completedAt: entity.completedAt,
@@ -276,7 +306,7 @@ describe('SagaRepository', () => {
     });
 
     it('should throw ConflictException if database version does not match entity version', async () => {
-      const entity = SagaInstanceEntity.create({ paymentId, correlationId });
+      const entity = SagaInstanceEntity.create({ paymentId, correlationId, merchantId, amount, currency });
       
       const dbCurrentResponse = {
         id: entity.id,
@@ -284,6 +314,9 @@ describe('SagaRepository', () => {
         correlationId: entity.correlationId,
         status: SagaStatus.LEDGER_PENDING,
         orderValidationStatus: OrderValidationStatus.PENDING,
+        merchantId: entity.merchantId,
+        amount: entity.amount,
+        currency: entity.currency,
         version: 5, // mismatch
         startedAt: entity.startedAt,
         completedAt: null,
@@ -308,6 +341,9 @@ describe('SagaRepository', () => {
           correlationId: 'saga_1',
           status: SagaStatus.LEDGER_PENDING,
           orderValidationStatus: OrderValidationStatus.PENDING,
+          merchantId: 'merch_xyz',
+          amount: 5000,
+          currency: 'USD',
           version: 0,
           startedAt: new Date(),
           completedAt: null,
@@ -323,6 +359,9 @@ describe('SagaRepository', () => {
           correlationId: 'saga_2',
           status: SagaStatus.BALANCE_RESERVED,
           orderValidationStatus: OrderValidationStatus.CONFIRMED,
+          merchantId: 'merch_xyz',
+          amount: 5000,
+          currency: 'USD',
           version: 1,
           startedAt: new Date(),
           completedAt: null,
@@ -346,6 +385,7 @@ describe('SagaRepository', () => {
           orderValidationStatus: {
             not: OrderValidationStatus.REJECTED,
           },
+          failureReason: null,
         },
         orderBy: {
           createdAt: 'asc',

@@ -1,4 +1,4 @@
-import { OrderValidationStatus,SagaStatus } from '../../generated/client';
+import { OrderValidationStatus, SagaStatus } from '../../generated/client';
 
 export class SagaInstanceEntity {
   constructor(
@@ -7,6 +7,9 @@ export class SagaInstanceEntity {
     public readonly correlationId: string,
     public status: SagaStatus,
     public orderValidationStatus: OrderValidationStatus,
+    public readonly merchantId: string,
+    public readonly amount: number,
+    public readonly currency: string,
     public version: number,
     public readonly startedAt: Date,
     public completedAt: Date | null,
@@ -14,7 +17,7 @@ export class SagaInstanceEntity {
     public readonly updatedAt: Date,
     public failureReason: string | null = null,
     public failedAt: Date | null = null,
-    public originService: string | null = null,
+    public originService: string | null = null
   ) {
     if (id !== correlationId) {
       throw new Error(
@@ -30,6 +33,9 @@ export class SagaInstanceEntity {
   static create(params: {
     paymentId: string;
     correlationId: string;
+    merchantId: string;
+    amount: number;
+    currency: string;
   }): SagaInstanceEntity {
     return new SagaInstanceEntity(
       params.correlationId, // id adopts correlationId value
@@ -37,6 +43,9 @@ export class SagaInstanceEntity {
       params.correlationId,
       SagaStatus.LEDGER_PENDING,
       OrderValidationStatus.PENDING,
+      params.merchantId,
+      params.amount,
+      params.currency,
       0, // version starts at 0
       new Date(),
       null, // completedAt is populated only when CLOSED
@@ -44,7 +53,7 @@ export class SagaInstanceEntity {
       new Date(),
       null,
       null,
-      null,
+      null
     );
   }
 
@@ -69,7 +78,7 @@ export class SagaInstanceEntity {
    * Checks if the saga is allowed to proceed forward.
    */
   canProceedForward(): boolean {
-    return this.orderValidationStatus !== OrderValidationStatus.REJECTED;
+    return this.orderValidationStatus !== OrderValidationStatus.REJECTED && this.failureReason === null;
   }
 
   /**
@@ -128,14 +137,14 @@ export class SagaInstanceEntity {
       );
     }
 
-    // Invariant: block forward financial execution when order validation is rejected
+    // Invariant: block forward financial execution when order validation is rejected or saga has failed
     if (
       !this.canProceedForward() &&
       nextState !== SagaStatus.REVERSED &&
       nextState !== SagaStatus.CLOSED
     ) {
       throw new Error(
-        `Cannot perform forward transition to ${nextState} when order validation is REJECTED`
+        `Cannot perform forward transition to ${nextState} when order validation is REJECTED or Saga has failed`
       );
     }
 
@@ -193,4 +202,3 @@ export class SagaInstanceEntity {
     return false;
   }
 }
-
