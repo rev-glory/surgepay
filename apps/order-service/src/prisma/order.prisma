@@ -111,6 +111,10 @@ model SagaInstance {
   createdAt             DateTime              @default(now()) @db.Timestamptz(6)
   updatedAt             DateTime              @updatedAt @db.Timestamptz(6)
 
+  recoveredAt           DateTime?             @db.Timestamptz(6)
+  recoveryCount         Int                   @default(0)
+  recoveryReason        String?
+
   @@index([status])
   @@index([correlationId])
   @@index([nextRetryAt])

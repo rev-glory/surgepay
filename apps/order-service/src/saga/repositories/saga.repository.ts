@@ -4,6 +4,7 @@ import {
   OrderValidationStatus,
   type SagaInstance,
   SagaStatus,
+  type SagaTransition,
   SagaTransitionType,
 } from '../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -36,7 +37,10 @@ export class SagaRepository {
       model.lastRetryAt,
       model.nextRetryAt,
       model.currentCommandId,
-      model.retryHandoffAt
+      model.retryHandoffAt,
+      model.recoveredAt,
+      model.recoveryCount,
+      model.recoveryReason
     );
   }
 
@@ -77,6 +81,9 @@ export class SagaRepository {
           nextRetryAt: entity.nextRetryAt,
           currentCommandId: entity.currentCommandId,
           retryHandoffAt: entity.retryHandoffAt,
+          recoveredAt: entity.recoveredAt,
+          recoveryCount: entity.recoveryCount,
+          recoveryReason: entity.recoveryReason,
         },
       });
 
@@ -181,6 +188,9 @@ export class SagaRepository {
           nextRetryAt: entity.nextRetryAt,
           currentCommandId: entity.currentCommandId,
           retryHandoffAt: entity.retryHandoffAt,
+          recoveredAt: entity.recoveredAt,
+          recoveryCount: entity.recoveryCount,
+          recoveryReason: entity.recoveryReason,
         },
       });
 
@@ -214,10 +224,6 @@ export class SagaRepository {
         status: {
           not: SagaStatus.CLOSED,
         },
-        orderValidationStatus: {
-          not: OrderValidationStatus.REJECTED,
-        },
-        failureReason: null, // Exclude failed ones too
       },
       orderBy: {
         createdAt: 'asc',
@@ -300,5 +306,18 @@ export class SagaRepository {
       },
     });
     return count > 0;
+  }
+
+  async findCompensationStep(
+    sagaId: string,
+    stepLabel: 'BALANCE_REVERSAL_DISPATCHED' | 'BALANCE_REVERSAL_ACKNOWLEDGED' | 'LEDGER_REVERSAL_DISPATCHED'
+  ): Promise<SagaTransition | null> {
+    return this.prisma.client.sagaTransition.findFirst({
+      where: {
+        sagaId,
+        transitionType: SagaTransitionType.COMPENSATION_STEP,
+        toState: stepLabel,
+      },
+    });
   }
 }

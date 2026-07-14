@@ -111,6 +111,9 @@ describe('SagaRepository', () => {
           nextRetryAt: entity.nextRetryAt,
           currentCommandId: entity.currentCommandId,
           retryHandoffAt: entity.retryHandoffAt,
+          recoveredAt: entity.recoveredAt,
+          recoveryCount: entity.recoveryCount,
+          recoveryReason: entity.recoveryReason,
         },
       });
       expect(result.id).toBe(entity.id);
@@ -299,6 +302,9 @@ describe('SagaRepository', () => {
           nextRetryAt: entity.nextRetryAt,
           currentCommandId: entity.currentCommandId,
           retryHandoffAt: entity.retryHandoffAt,
+          recoveredAt: entity.recoveredAt,
+          recoveryCount: entity.recoveryCount,
+          recoveryReason: entity.recoveryReason,
         },
       });
       expect(prismaMock.client.sagaTransition.create).toHaveBeenCalledWith({
@@ -394,10 +400,6 @@ describe('SagaRepository', () => {
           status: {
             not: SagaStatus.CLOSED,
           },
-          orderValidationStatus: {
-            not: OrderValidationStatus.REJECTED,
-          },
-          failureReason: null,
         },
         orderBy: {
           createdAt: 'asc',

@@ -23,7 +23,10 @@ export class SagaInstanceEntity {
     public lastRetryAt: Date | null = null,
     public nextRetryAt: Date | null = null,
     public currentCommandId: string | null = null,
-    public retryHandoffAt: Date | null = null
+    public retryHandoffAt: Date | null = null,
+    public recoveredAt: Date | null = null,
+    public recoveryCount: number = 0,
+    public recoveryReason: string | null = null
   ) {
     if (id !== correlationId) {
       throw new Error(
@@ -67,7 +70,10 @@ export class SagaInstanceEntity {
       null, // lastRetryAt
       null, // nextRetryAt
       params.initialCommandId || null, // currentCommandId
-      null  // retryHandoffAt
+      null, // retryHandoffAt
+      null, // recoveredAt
+      0,    // recoveryCount
+      null  // recoveryReason
     );
   }
 
@@ -260,5 +266,11 @@ export class SagaInstanceEntity {
     }
 
     return false;
+  }
+
+  recordRecovery(reason: string): void {
+    this.recoveredAt = new Date();
+    this.recoveryCount += 1;
+    this.recoveryReason = reason;
   }
 }

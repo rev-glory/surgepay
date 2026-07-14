@@ -14,6 +14,7 @@ import { SagaRiskEventsConsumer } from './handlers/risk-events.handler';
 import { OrderOutboxRelay } from './recovery/order-outbox.relay';
 import { RetryEventsConsumer } from './recovery/retry-events.consumer';
 import { SagaTimeoutScanner } from './recovery/saga-timeout.scanner';
+import { SagaRecoveryService } from './recovery/saga-recovery.service';
 import { OrderOutboxRepository } from './repositories/order-outbox.repository';
 import { SagaRepository } from './repositories/saga.repository';
 import { SagaService } from './saga.service';
@@ -33,6 +34,7 @@ import { SagaService } from './saga.service';
     OrderOutboxRepository,
     OrderOutboxRelay,
     SagaTimeoutScanner,
+    SagaRecoveryService,
     KafkaEventProducer,
     SagaRepository,
     CommandDispatcher,
@@ -49,6 +51,7 @@ import { SagaService } from './saga.service';
     SagaRepository,
     OrderOutboxRepository,
     CommandDispatcher,
+    SagaRecoveryService,
   ],
 })
 export class SagaModule {}
