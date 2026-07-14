@@ -47,5 +47,4 @@ export class ConfigHealthIndicator extends HealthIndicator {
       throw new HealthCheckError('Configuration check failed', result);
     }
   }
-
 }

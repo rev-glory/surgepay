@@ -31,3 +31,38 @@ model Order {
   @@index([createdAt])
   @@index([reference])
 }
+
+enum InboxStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+  RETRYING
+  DLQ_SENT
+}
+
+model InboxEvent {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId       String
+  consumer      String
+  status        InboxStatus @default(RECEIVED)
+  payload       Json
+  receivedAt    DateTime    @default(now()) @db.Timestamptz(6)
+  processedAt   DateTime?   @db.Timestamptz(6)
+  retryCount    Int         @default(0)
+
+  // Envelope metadata stored as first-class columns
+  eventType     String
+  correlationId String
+  causationId   String
+  sagaId        String
+  timestamp     DateTime    @db.Timestamptz(6)
+  version       Int
+
+  @@unique([consumer, eventId])
+  @@index([eventId])
+  @@index([status])
+  @@index([correlationId])
+  @@index([sagaId])
+  @@index([receivedAt])
+}

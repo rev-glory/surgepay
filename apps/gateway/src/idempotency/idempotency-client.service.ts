@@ -1,7 +1,7 @@
 import * as http from 'http';
 import * as https from 'https';
 
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, OnModuleDestroy } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 
 import { LoggerService } from '@surgepay/common';
@@ -40,22 +40,30 @@ export interface CleanupRequest {
 }
 
 @Injectable()
-export class IdempotencyClientService {
+export class IdempotencyClientService implements OnModuleDestroy {
   private readonly axiosInstance: AxiosInstance;
+  private readonly httpAgent: http.Agent;
+  private readonly httpsAgent: https.Agent;
 
   constructor(private readonly logger: LoggerService) {
     const config = getGatewayConfig();
     this.logger.setContext('IdempotencyClientService');
 
-    const httpAgent = new http.Agent({ keepAlive: true });
-    const httpsAgent = new https.Agent({ keepAlive: true });
+    this.httpAgent = new http.Agent({ keepAlive: true });
+    this.httpsAgent = new https.Agent({ keepAlive: true });
 
     this.axiosInstance = axios.create({
       baseURL: config.IDEMPOTENCY_SERVICE_URL,
       timeout: config.IDEMPOTENCY_SERVICE_TIMEOUT,
-      httpAgent,
-      httpsAgent,
+      httpAgent: this.httpAgent,
+      httpsAgent: this.httpsAgent,
     });
+  }
+
+  onModuleDestroy(): void {
+    this.logger.info('Shutting down IdempotencyClientService agents...');
+    this.httpAgent.destroy();
+    this.httpsAgent.destroy();
   }
 
   async check(payload: CheckRequest): Promise<CheckResponse> {

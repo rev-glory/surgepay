@@ -23,6 +23,8 @@ import { AppModule as OrderModule } from '../../apps/order-service/src/app.modul
 import { AppModule as PaymentModule } from '../../apps/payment-service/src/app.module';
 import { PostgresTestContainer } from '../testcontainers/postgres.container';
 import { RedisTestContainer } from '../testcontainers/redis.container';
+import { RedpandaTestContainer } from '../testcontainers/redpanda.container';
+import { RelayModule } from '../../apps/outbox-relay/src/relay.module';
 
 let gatewayApp: INestApplication | null = null;
 let merchantApp: INestApplication | null = null;
@@ -30,12 +32,14 @@ let idempotencyApp: INestApplication | null = null;
 let paymentApp: INestApplication | null = null;
 let orderApp: INestApplication | null = null;
 let fraudApp: INestApplication | null = null;
+let relayApp: INestApplication | null = null;
 
 let redisClient: Redis | null = null;
 let prismaClient: PrismaClient | null = null;
 
 let pgContainerInstance: PostgresTestContainer | null = null;
 let redisContainerInstance: RedisTestContainer | null = null;
+let redpandaContainerInstance: RedpandaTestContainer | null = null;
 
 export function getRedisClient(): Redis {
   if (!redisClient) {
@@ -55,6 +59,10 @@ export function getRedisContainerInstance(): RedisTestContainer | null {
   return redisContainerInstance;
 }
 
+export function getRedpandaContainerInstance(): RedpandaTestContainer | null {
+  return redpandaContainerInstance;
+}
+
 export async function setupE2EEnvironment() {
   if (gatewayApp) {
     return {
@@ -62,6 +70,9 @@ export async function setupE2EEnvironment() {
       merchantApp,
       idempotencyApp,
       paymentApp,
+      orderApp,
+      fraudApp,
+      relayApp,
     };
   }
 
@@ -106,6 +117,14 @@ export async function setupE2EEnvironment() {
   if (!redisContainerInstance) {
     redisContainerInstance = new RedisTestContainer();
     process.env.REDIS_URL = await redisContainerInstance.start();
+  }
+
+  // 2.5 Start Redpanda Container if not already running in the process
+  if (!redpandaContainerInstance) {
+    redpandaContainerInstance = new RedpandaTestContainer();
+    const brokers = await redpandaContainerInstance.start();
+    process.env.KAFKA_BROKERS = brokers;
+    process.env.REDPANDA_CONTAINER_ID = redpandaContainerInstance.getContainer()?.getId() || '';
   }
 
   const databaseUrl = process.env.DATABASE_URL;
@@ -277,6 +296,17 @@ export async function setupE2EEnvironment() {
   });
   await gatewayApp.listen(0);
 
+  // 8.5. Boot Outbox Relay Service
+  process.env.SERVICE_NAME = 'outbox-relay';
+  const relayModuleFixture: TestingModule = await Test.createTestingModule({
+    imports: [RelayModule],
+  }).compile();
+  relayApp = relayModuleFixture.createNestApplication();
+  const relayLogger = await relayApp.resolve(LoggerService);
+  relayApp.useGlobalFilters(new ExceptionLoggingFilter(relayLogger));
+  relayApp.useGlobalInterceptors(new LoggingInterceptor(relayLogger));
+  await relayApp.listen(0);
+
   // Clear SERVICE_NAME so individual services fall back to their ConfigService name for health checks
   delete process.env.SERVICE_NAME;
 
@@ -287,6 +317,7 @@ export async function setupE2EEnvironment() {
     paymentApp,
     orderApp,
     fraudApp,
+    relayApp,
   };
 }
 
@@ -315,6 +346,10 @@ export async function teardownE2EEnvironment() {
     await fraudApp.close();
     fraudApp = null;
   }
+  if (relayApp) {
+    await relayApp.close();
+    relayApp = null;
+  }
   if (redisClient) {
     redisClient.disconnect();
     redisClient = null;
@@ -334,5 +369,9 @@ export async function stopContainers() {
   if (pgContainerInstance) {
     await pgContainerInstance.stop();
     pgContainerInstance = null;
+  }
+  if (redpandaContainerInstance) {
+    await redpandaContainerInstance.stop();
+    redpandaContainerInstance = null;
   }
 }

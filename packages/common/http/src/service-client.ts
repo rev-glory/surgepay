@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
 
 import { LoggerService, RequestContextService } from '@surgepay/common';
 import { ConfigService } from '@surgepay/config';
@@ -7,27 +7,27 @@ import { HttpClient } from './http-client';
 import { InternalService, ServiceRegistry } from './registry/service-registry';
 
 @Injectable()
-export class ServiceClient {
+export class ServiceClient implements OnModuleDestroy {
   public readonly gateway: HttpClient;
-  
+
   public readonly merchant: HttpClient;
   public readonly merchantService: HttpClient;
-  
+
   public readonly payment: HttpClient;
   public readonly paymentService: HttpClient;
-  
+
   public readonly order: HttpClient;
   public readonly orderService: HttpClient;
-  
+
   public readonly ledger: HttpClient;
   public readonly ledgerService: HttpClient;
-  
+
   public readonly balance: HttpClient;
   public readonly balanceService: HttpClient;
-  
+
   public readonly notification: HttpClient;
   public readonly notificationService: HttpClient;
-  
+
   public readonly fraud: HttpClient;
   public readonly fraudService: HttpClient;
 
@@ -60,7 +60,7 @@ export class ServiceClient {
 
     // Instantiate and expose clients
     this.gateway = buildClient(InternalService.GATEWAY);
-    
+
     this.merchant = buildClient(InternalService.MERCHANT);
     this.merchantService = this.merchant;
 
@@ -82,6 +82,20 @@ export class ServiceClient {
     this.fraud = buildClient(InternalService.FRAUD);
     this.fraudService = this.fraud;
 
-    this.logger.info('ServiceClient initialized successfully with all registered service endpoints.');
+    this.logger.info(
+      'ServiceClient initialized successfully with all registered service endpoints.',
+    );
+  }
+
+  onModuleDestroy(): void {
+    this.logger.info('Shutting down ServiceClient HttpClients...');
+    this.gateway.destroy();
+    this.merchant.destroy();
+    this.payment.destroy();
+    this.order.destroy();
+    this.ledger.destroy();
+    this.balance.destroy();
+    this.notification.destroy();
+    this.fraud.destroy();
   }
 }

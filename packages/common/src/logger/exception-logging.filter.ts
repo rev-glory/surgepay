@@ -39,14 +39,19 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
       status = exception.getStatus();
       let responseBody = exception.getResponse();
       const objException = exception as unknown as Record<string, unknown>;
-      if (objException && typeof objException === 'object' && 'responseData' in objException && objException.responseData) {
+      if (
+        objException &&
+        typeof objException === 'object' &&
+        'responseData' in objException &&
+        objException.responseData
+      ) {
         responseBody = objException.responseData;
       }
       message = exception.message;
 
       if (typeof responseBody === 'object' && responseBody !== null) {
         const bodyObj = responseBody as Record<string, unknown>;
-        
+
         let rawError = bodyObj.error || bodyObj.code;
         if (rawError && typeof rawError === 'object') {
           rawError = (rawError as Record<string, unknown>).code;
@@ -58,7 +63,10 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
             code = PlatformErrorCode.IDEMPOTENCY_CONFLICT;
             message = 'An identical request with this Idempotency-Key is already in progress';
           }
-        } else if (typeof bodyObj.message === 'string' && Object.values(PlatformErrorCode).includes(bodyObj.message as PlatformErrorCode)) {
+        } else if (
+          typeof bodyObj.message === 'string' &&
+          Object.values(PlatformErrorCode).includes(bodyObj.message as PlatformErrorCode)
+        ) {
           code = bodyObj.message;
         } else {
           if (status === HttpStatus.UNAUTHORIZED) {
@@ -87,11 +95,11 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
         } else if (Array.isArray(extractedMessage)) {
           message = extractedMessage.join(', ');
         }
-        
+
         if (bodyObj.validationErrors && Array.isArray(bodyObj.validationErrors)) {
           validationErrors = bodyObj.validationErrors as ValidationErrorDetail[];
         }
-        
+
         if (bodyObj.metadata && typeof bodyObj.metadata === 'object') {
           metadata = bodyObj.metadata as Record<string, unknown>;
         }
@@ -103,13 +111,25 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
     }
 
     // Retrieve correlation and request identifiers from request context or headers
-    const correlationId = RequestContext.correlationId || (request.headers['x-correlation-id'] as string | undefined);
-    const requestId = RequestContext.requestId || (request.headers['x-request-id'] as string | undefined);
-    const merchantId = RequestContext.merchantId || (request.headers['x-merchant-id'] as string | undefined) || (metadata?.merchantId as string | undefined);
-    const paymentId = RequestContext.paymentId || (request.headers['x-payment-id'] as string | undefined) || (metadata?.paymentId as string | undefined);
+    const correlationId =
+      RequestContext.correlationId || (request.headers['x-correlation-id'] as string | undefined);
+    const requestId =
+      RequestContext.requestId || (request.headers['x-request-id'] as string | undefined);
+    const merchantId =
+      RequestContext.merchantId ||
+      (request.headers['x-merchant-id'] as string | undefined) ||
+      (metadata?.merchantId as string | undefined);
+    const paymentId =
+      RequestContext.paymentId ||
+      (request.headers['x-payment-id'] as string | undefined) ||
+      (metadata?.paymentId as string | undefined);
 
     // Log the unhandled exception using structured logger if not already logged
-    if (exception && typeof exception === 'object' && !(exception as Record<string, unknown>).isLogged) {
+    if (
+      exception &&
+      typeof exception === 'object' &&
+      !(exception as Record<string, unknown>).isLogged
+    ) {
       const exceptionType = exception.constructor.name;
       const logPayload = {
         requestId,
@@ -138,17 +158,19 @@ export class ExceptionLoggingFilter implements ExceptionFilter {
     }
 
     // Send formatted standard error response mapping to common contracts
-    response.status(status).json(
-      createErrorResponse(
-        code,
-        message,
-        status,
-        request.url,
-        correlationId,
-        requestId,
-        validationErrors,
-        metadata,
-      ),
-    );
+    response
+      .status(status)
+      .json(
+        createErrorResponse(
+          code,
+          message,
+          status,
+          request.url,
+          correlationId,
+          requestId,
+          validationErrors,
+          metadata,
+        ),
+      );
   }
 }

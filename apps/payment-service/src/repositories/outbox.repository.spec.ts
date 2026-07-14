@@ -67,6 +67,7 @@ describe('OutboxRepository', () => {
         createdAt: entity.createdAt,
         publishedAt: null,
         retryCount: 0,
+        traceHeaders: {},
       };
 
       prismaMock.client.outboxEvent.create.mockResolvedValue(dbModel);
@@ -116,6 +117,7 @@ describe('OutboxRepository', () => {
           createdAt: new Date(),
           publishedAt: null,
           retryCount: 0,
+          traceHeaders: null,
         },
       ];
 
@@ -155,6 +157,7 @@ describe('OutboxRepository', () => {
         createdAt: new Date(),
         publishedAt: new Date(),
         retryCount: 0,
+        traceHeaders: null,
       };
 
       prismaMock.client.outboxEvent.update.mockResolvedValue(dbModel);
@@ -189,6 +192,7 @@ describe('OutboxRepository', () => {
         createdAt: new Date(),
         publishedAt: null,
         retryCount: 1,
+        traceHeaders: null,
       };
 
       prismaMock.client.outboxEvent.update.mockResolvedValue(dbModel);
@@ -225,6 +229,7 @@ describe('OutboxRepository', () => {
         createdAt: new Date(),
         publishedAt: null,
         retryCount: 0,
+        traceHeaders: null,
       };
 
       prismaMock.client.outboxEvent.update.mockResolvedValue(dbModel);

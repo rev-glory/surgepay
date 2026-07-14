@@ -1,0 +1,38 @@
+groups:
+  - name: SurgePayMessagingAlerts
+    rules:
+      - alert: SurgePayOutboxBacklogHigh
+        expr: sum(outbox_pending_events) by (service) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SurgePay Outbox backlog is high"
+          description: "Outbox pending event depth has remained above 100 for 5 minutes, indicating the relay loop may be stuck or broker publishing is severely congested."
+
+      - alert: SurgePayDLQEventsGrowing
+        expr: sum(rate(inbox_dlq_events_total[5m])) by (service, consumer) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SurgePay DLQ events are growing"
+          description: "Events are entering the Dead Letter Queue at an elevated rate (exceeding 0.05 events/sec), indicating persistent poison-message failures or unhandled runtime exceptions in consumers."
+
+      - alert: SurgePayConsumerLagHigh
+        expr: sum(redpanda_kafka_consumer_group_lag) by (group, topic) > 500
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SurgePay consumer group lag is high"
+          description: "Consumer group lag for group {{ $labels.group }} on topic {{ $labels.topic }} has exceeded 500 records for 3 minutes, indicating the consumer is falling behind ingestion throughput."
+
+      - alert: SurgePayPublishFailureRateHigh
+        expr: sum(rate(publish_failures_total[2m])) by (service) / (sum(rate(events_published_total[2m])) by (service) + sum(rate(publish_failures_total[2m])) by (service)) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SurgePay Kafka publish failure rate is high"
+          description: "Kafka event publishing failure rate has exceeded 5% of total attempts for 2 minutes, indicating broker unavailability or network connectivity issues."

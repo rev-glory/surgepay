@@ -23,6 +23,8 @@ export interface KafkaConfig {
   clientId: string;
   ssl: boolean;
   sasl: boolean;
+  consumerGroupId: string;
+  consumerRetryLimit: number;
 }
 
 export interface HttpConfig {
@@ -64,3 +66,13 @@ export interface ServicesConfig {
   internalRequestRetryDelay: number;
 }
 
+export interface OutboxConfig {
+  pollingInterval: number;
+  batchSize: number;
+  retryLimit: number;
+  publishTimeout: number;
+  retentionDays: number;
+  staleTimeoutMs: number;
+  maxInFlightMessages: number;
+  flushInterval: number;
+}

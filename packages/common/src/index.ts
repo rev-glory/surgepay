@@ -3,11 +3,13 @@ export * from './errors';
 export * from './health';
 export * from './helpers';
 export * from './logger';
+export * from './messaging';
 export * from './observability/metrics';
+export * from './observability/metrics.controller';
+export * from './observability/metrics.module';
+export * from './observability/prometheus-metrics.service';
 export * from './response';
 export * from './time';
 export * from './uuid';
 export * from './validation/app-validation.pipe';
 export * from './validation/dto';
-
-

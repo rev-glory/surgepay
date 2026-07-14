@@ -8,7 +8,12 @@ export interface OrderCurrencyMismatchMetadata extends Record<string, unknown> {
 }
 
 export class OrderCurrencyMismatchException extends DomainException<OrderCurrencyMismatchMetadata> {
-  constructor(reference: string, expectedCurrency: string, requestedCurrency: string, options?: { cause?: Error }) {
+  constructor(
+    reference: string,
+    expectedCurrency: string,
+    requestedCurrency: string,
+    options?: { cause?: Error },
+  ) {
     super(
       `Currency mismatch: expected ${expectedCurrency}, requested ${requestedCurrency}.`,
       DomainErrorCode.ORDER_CURRENCY_MISMATCH,

@@ -27,11 +27,7 @@ export class InternalServiceException extends HttpException {
 }
 
 export class TransportException extends InternalServiceException {
-  constructor(
-    message: string,
-    status: HttpStatus,
-    details: ExceptionDetails,
-  ) {
+  constructor(message: string, status: HttpStatus, details: ExceptionDetails) {
     super(message, status, details);
   }
 }
@@ -61,7 +57,8 @@ export class DownstreamResponseException extends InternalServiceException {
       {
         ...details,
         statusCode,
-        originalError: typeof responseData === 'object' ? JSON.stringify(responseData) : String(responseData),
+        originalError:
+          typeof responseData === 'object' ? JSON.stringify(responseData) : String(responseData),
       },
     );
   }

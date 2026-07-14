@@ -12,6 +12,8 @@
       "@shared/*": ["./src/*"],
       "@surgepay/config": ["packages/config/dist/index"],
       "@surgepay/config/*": ["packages/config/dist/*"],
+      "@surgepay/events": ["packages/events/dist/index"],
+      "@surgepay/events/*": ["packages/events/dist/*"]
     }
   },
   "include": ["src/**/*"]
