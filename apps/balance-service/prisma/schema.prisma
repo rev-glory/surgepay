@@ -1,0 +1,90 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+enum InboxStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+  RETRYING
+  DLQ_SENT
+}
+
+model InboxEvent {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId       String
+  consumer      String
+  status        InboxStatus @default(RECEIVED)
+  payload       Json
+  receivedAt    DateTime    @default(now()) @db.Timestamptz(6)
+  processedAt   DateTime?   @db.Timestamptz(6)
+  retryCount    Int         @default(0)
+
+  // Envelope metadata stored as first-class columns
+  eventType     String
+  correlationId String
+  causationId   String
+  sagaId        String
+  timestamp     DateTime    @db.Timestamptz(6)
+  version       Int
+
+  @@unique([consumer, eventId])
+  @@index([eventId])
+  @@index([status])
+  @@index([correlationId])
+  @@index([sagaId])
+  @@index([receivedAt])
+}
+
+enum OutboxStatus {
+  PENDING
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  RETRYING
+}
+
+model OutboxEvent {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  aggregateId   String       @db.Uuid
+  aggregateType String
+  eventType     String
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  requestId     String
+  correlationId String
+  causationId   String
+  createdAt     DateTime     @default(now()) @db.Timestamptz(6)
+  publishedAt   DateTime?    @db.Timestamptz(6)
+  retryCount    Int          @default(0)
+  partition     Int?
+  offset        String?
+  lastAttemptAt DateTime?    @db.Timestamptz(6)
+  traceHeaders  Json?
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([eventType])
+  @@index([correlationId])
+  @@index([requestId])
+}
+
+model MerchantBalance {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  merchantId    String
+  currency      String
+  available     Int      // integer cents
+  reserved      Int      // integer cents
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  @@unique([merchantId, currency])
+  @@index([merchantId])
+  @@index([updatedAt])
+}

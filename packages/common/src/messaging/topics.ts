@@ -13,6 +13,8 @@ import {
   RESERVE_BALANCE,
   REVERSE_BALANCE,
   REVERSE_LEDGER_ENTRY,
+  BALANCE_RESERVED,
+  BALANCE_RESERVATION_FAILED,
 } from '@surgepay/events';
 
 export const TOPIC_REGISTRY: Record<string, string> = {
@@ -33,6 +35,8 @@ export const TOPIC_REGISTRY: Record<string, string> = {
   [LEDGER_ENTRY_RECORDED]: 'ledger.events',
   [LEDGER_RECORDING_FAILED]: 'ledger.events',
   [LEDGER_REVERSED]: 'ledger.events',
+  [BALANCE_RESERVED]: 'balance.events',
+  [BALANCE_RESERVATION_FAILED]: 'balance.events',
   'payments.dlq': 'payments.dlq',
 };
 
