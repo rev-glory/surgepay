@@ -1,8 +1,17 @@
 import { Injectable } from '@nestjs/common';
 
 import { LoggerService } from '@surgepay/common';
-import type { PaymentCompletedEvent } from '@surgepay/events';
+import {
+  type PaymentCompletedEvent,
+  type OrderEligibilityConfirmedEvent,
+  type OrderEligibilityRejectedEvent,
+} from '@surgepay/events';
 
+import {
+  SagaStatus,
+  OrderValidationStatus,
+  SagaTransitionType,
+} from '../generated/client';
 import { SagaInstanceEntity } from './entities/saga-instance.entity';
 import { SagaRepository } from './repositories/saga.repository';
 
@@ -53,7 +62,24 @@ export class SagaService {
 
     // Persist new saga instance to the database
     try {
-      await this.sagaRepository.create(saga);
+      await this.sagaRepository.create(saga, [
+        {
+          transitionType: SagaTransitionType.SAGA_STATUS,
+          fromState: 'NONE',
+          toState: SagaStatus.LEDGER_PENDING,
+          eventId: event.eventId,
+          causationId: event.causationId,
+          eventType: event.eventType,
+        },
+        {
+          transitionType: SagaTransitionType.ORDER_VALIDATION,
+          fromState: 'NONE',
+          toState: OrderValidationStatus.PENDING,
+          eventId: event.eventId,
+          causationId: event.causationId,
+          eventType: event.eventType,
+        },
+      ]);
     } catch (err: unknown) {
       const error = err as { code?: string; meta?: { target?: string[] } };
       if (error && error.code === 'P2002') {
@@ -80,6 +106,100 @@ export class SagaService {
       paymentId: saga.paymentId,
       correlationId: saga.correlationId,
       sagaStatus: saga.status,
+    });
+  }
+
+  /**
+   * Processes order eligibility confirmation response event.
+   */
+  async processOrderEligibilityConfirmed(event: OrderEligibilityConfirmedEvent): Promise<void> {
+    const { correlationId, sagaId, eventId, eventType, causationId } = event;
+    const { orderId } = event.payload;
+
+    this.logger.info('Processing OrderEligibilityConfirmed inside Saga Service', {
+      eventId,
+      eventType,
+      correlationId,
+      sagaId,
+      orderId,
+    });
+
+    const saga = await this.sagaRepository.findById(sagaId);
+    if (!saga) {
+      this.logger.warn('SagaInstance not found for OrderEligibilityConfirmed event', {
+        sagaId,
+        correlationId,
+        eventId,
+      });
+      return;
+    }
+
+    const fromState = saga.orderValidationStatus;
+    saga.confirmOrder();
+
+    await this.sagaRepository.update(saga, [
+      {
+        transitionType: SagaTransitionType.ORDER_VALIDATION,
+        fromState,
+        toState: saga.orderValidationStatus,
+        eventId,
+        causationId,
+        eventType,
+      },
+    ]);
+
+    this.logger.info('Saga order validation status updated to CONFIRMED. Financial status remains LEDGER_PENDING.', {
+      sagaId: saga.id,
+      correlationId: saga.correlationId,
+      version: saga.version,
+    });
+  }
+
+  /**
+   * Processes order eligibility rejection response event.
+   */
+  async processOrderEligibilityRejected(event: OrderEligibilityRejectedEvent): Promise<void> {
+    const { correlationId, sagaId, eventId, eventType, causationId } = event;
+    const { orderId, reason } = event.payload;
+
+    this.logger.info('Processing OrderEligibilityRejected inside Saga Service', {
+      eventId,
+      eventType,
+      correlationId,
+      sagaId,
+      orderId,
+      reason,
+    });
+
+    const saga = await this.sagaRepository.findById(sagaId);
+    if (!saga) {
+      this.logger.warn('SagaInstance not found for OrderEligibilityRejected event', {
+        sagaId,
+        correlationId,
+        eventId,
+      });
+      return;
+    }
+
+    const fromState = saga.orderValidationStatus;
+    saga.rejectOrder(`Order eligibility check failed: ${reason}`, 'order-service');
+
+    await this.sagaRepository.update(saga, [
+      {
+        transitionType: SagaTransitionType.ORDER_VALIDATION,
+        fromState,
+        toState: saga.orderValidationStatus,
+        eventId,
+        causationId,
+        eventType,
+      },
+    ]);
+
+    this.logger.info('Saga order validation status updated to REJECTED. Financial status remains LEDGER_PENDING.', {
+      sagaId: saga.id,
+      correlationId: saga.correlationId,
+      version: saga.version,
+      failureReason: saga.failureReason,
     });
   }
 }

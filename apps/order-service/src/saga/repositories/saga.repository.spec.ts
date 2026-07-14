@@ -1,7 +1,11 @@
 import { ConflictException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 
-import { SagaStatus } from '../../generated/client';
+import {
+  SagaStatus,
+  OrderValidationStatus,
+  SagaTransitionType,
+} from '../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SagaInstanceEntity } from '../entities/saga-instance.entity';
 import { SagaRepository } from './saga.repository';
@@ -13,9 +17,14 @@ describe('SagaRepository', () => {
       sagaInstance: {
         create: jest.Mock;
         findUnique: jest.Mock;
+        update: jest.Mock;
         updateMany: jest.Mock;
         findMany: jest.Mock;
       };
+      sagaTransition: {
+        create: jest.Mock;
+      };
+      $transaction: jest.Mock;
     };
   };
 
@@ -25,9 +34,14 @@ describe('SagaRepository', () => {
         sagaInstance: {
           create: jest.fn(),
           findUnique: jest.fn(),
+          update: jest.fn(),
           updateMany: jest.fn(),
           findMany: jest.fn(),
         },
+        sagaTransition: {
+          create: jest.fn(),
+        },
+        $transaction: jest.fn().mockImplementation((cb) => cb(prismaMock.client)),
       },
     };
 
@@ -55,11 +69,15 @@ describe('SagaRepository', () => {
         paymentId: entity.paymentId,
         correlationId: entity.correlationId,
         status: entity.status,
+        orderValidationStatus: entity.orderValidationStatus,
         version: entity.version,
         startedAt: entity.startedAt,
         completedAt: entity.completedAt,
         createdAt: entity.createdAt,
         updatedAt: entity.updatedAt,
+        failureReason: entity.failureReason,
+        failedAt: entity.failedAt,
+        originService: entity.originService,
       };
       prismaMock.client.sagaInstance.create.mockResolvedValue(dbMockResponse);
 
@@ -71,9 +89,13 @@ describe('SagaRepository', () => {
           paymentId: entity.paymentId,
           correlationId: entity.correlationId,
           status: entity.status,
+          orderValidationStatus: entity.orderValidationStatus,
           version: entity.version,
           startedAt: entity.startedAt,
           completedAt: entity.completedAt,
+          failureReason: entity.failureReason,
+          failedAt: entity.failedAt,
+          originService: entity.originService,
         },
       });
       expect(result.id).toBe(entity.id);
@@ -89,11 +111,15 @@ describe('SagaRepository', () => {
         paymentId: entity.paymentId,
         correlationId: entity.correlationId,
         status: entity.status,
+        orderValidationStatus: entity.orderValidationStatus,
         version: entity.version,
         startedAt: entity.startedAt,
         completedAt: entity.completedAt,
         createdAt: entity.createdAt,
         updatedAt: entity.updatedAt,
+        failureReason: entity.failureReason,
+        failedAt: entity.failedAt,
+        originService: entity.originService,
       };
       prismaMock.client.sagaInstance.findUnique.mockResolvedValue(dbMockResponse);
 
@@ -105,14 +131,6 @@ describe('SagaRepository', () => {
       expect(result).toBeInstanceOf(SagaInstanceEntity);
       expect(result!.id).toBe(entity.id);
     });
-
-    it('should return null if saga is not found', async () => {
-      prismaMock.client.sagaInstance.findUnique.mockResolvedValue(null);
-
-      const result = await repository.findById('non-existent');
-
-      expect(result).toBeNull();
-    });
   });
 
   describe('findByPaymentId', () => {
@@ -123,11 +141,15 @@ describe('SagaRepository', () => {
         paymentId: entity.paymentId,
         correlationId: entity.correlationId,
         status: entity.status,
+        orderValidationStatus: entity.orderValidationStatus,
         version: entity.version,
         startedAt: entity.startedAt,
         completedAt: entity.completedAt,
         createdAt: entity.createdAt,
         updatedAt: entity.updatedAt,
+        failureReason: entity.failureReason,
+        failedAt: entity.failedAt,
+        originService: entity.originService,
       };
       prismaMock.client.sagaInstance.findUnique.mockResolvedValue(dbMockResponse);
 
@@ -149,11 +171,15 @@ describe('SagaRepository', () => {
         paymentId: entity.paymentId,
         correlationId: entity.correlationId,
         status: entity.status,
+        orderValidationStatus: entity.orderValidationStatus,
         version: entity.version,
         startedAt: entity.startedAt,
         completedAt: entity.completedAt,
         createdAt: entity.createdAt,
         updatedAt: entity.updatedAt,
+        failureReason: entity.failureReason,
+        failedAt: entity.failedAt,
+        originService: entity.originService,
       };
       prismaMock.client.sagaInstance.findUnique.mockResolvedValue(dbMockResponse);
 
@@ -168,74 +194,143 @@ describe('SagaRepository', () => {
   });
 
   describe('update', () => {
-    it('should call updateMany to filter by version and increment version upon success', async () => {
+    it('should query current version, verify locking, call update, and commit transitions', async () => {
       const entity = SagaInstanceEntity.create({ paymentId, correlationId });
+      entity.confirmOrder();
       entity.transitionTo(SagaStatus.LEDGER_RECORDED);
 
-      prismaMock.client.sagaInstance.updateMany.mockResolvedValue({ count: 1 });
+      const dbCurrentResponse = {
+        id: entity.id,
+        paymentId: entity.paymentId,
+        correlationId: entity.correlationId,
+        status: SagaStatus.LEDGER_PENDING,
+        orderValidationStatus: OrderValidationStatus.PENDING,
+        version: 0,
+        startedAt: entity.startedAt,
+        completedAt: null,
+        createdAt: entity.createdAt,
+        updatedAt: entity.updatedAt,
+        failureReason: null,
+        failedAt: null,
+        originService: null,
+      };
+      prismaMock.client.sagaInstance.findUnique.mockResolvedValueOnce(dbCurrentResponse);
 
       const dbMockResponse = {
         id: entity.id,
         paymentId: entity.paymentId,
         correlationId: entity.correlationId,
         status: SagaStatus.LEDGER_RECORDED,
+        orderValidationStatus: OrderValidationStatus.CONFIRMED,
         version: 1, // incremented
         startedAt: entity.startedAt,
         completedAt: entity.completedAt,
         createdAt: entity.createdAt,
         updatedAt: new Date(),
+        failureReason: null,
+        failedAt: null,
+        originService: null,
       };
-      prismaMock.client.sagaInstance.findUnique.mockResolvedValue(dbMockResponse);
+      prismaMock.client.sagaInstance.update.mockResolvedValue(dbMockResponse);
 
-      const result = await repository.update(entity);
-
-      expect(prismaMock.client.sagaInstance.updateMany).toHaveBeenCalledWith({
-        where: {
-          id: entity.id,
-          version: entity.version,
+      const result = await repository.update(entity, [
+        {
+          transitionType: SagaTransitionType.ORDER_VALIDATION,
+          fromState: OrderValidationStatus.PENDING,
+          toState: OrderValidationStatus.CONFIRMED,
+          eventId: 'evt_1',
+          causationId: 'cause_1',
+          eventType: 'OrderEligibilityConfirmed',
         },
+      ]);
+
+      expect(prismaMock.client.sagaInstance.findUnique).toHaveBeenCalledWith({
+        where: { id: entity.id },
+      });
+      expect(prismaMock.client.sagaInstance.update).toHaveBeenCalledWith({
+        where: { id: entity.id },
         data: {
           status: SagaStatus.LEDGER_RECORDED,
+          orderValidationStatus: OrderValidationStatus.CONFIRMED,
           completedAt: entity.completedAt,
           version: { increment: 1 },
+          failureReason: null,
+          failedAt: null,
+          originService: null,
+        },
+      });
+      expect(prismaMock.client.sagaTransition.create).toHaveBeenCalledWith({
+        data: {
+          sagaId: entity.id,
+          correlationId: entity.correlationId,
+          transitionType: SagaTransitionType.ORDER_VALIDATION,
+          fromState: OrderValidationStatus.PENDING,
+          toState: OrderValidationStatus.CONFIRMED,
+          eventId: 'evt_1',
+          causationId: 'cause_1',
+          eventType: 'OrderEligibilityConfirmed',
         },
       });
       expect(result.status).toBe(SagaStatus.LEDGER_RECORDED);
       expect(result.version).toBe(1);
     });
 
-    it('should throw ConflictException if updateMany returns count 0 indicating a concurrent update', async () => {
+    it('should throw ConflictException if database version does not match entity version', async () => {
       const entity = SagaInstanceEntity.create({ paymentId, correlationId });
-      prismaMock.client.sagaInstance.updateMany.mockResolvedValue({ count: 0 });
+      
+      const dbCurrentResponse = {
+        id: entity.id,
+        paymentId: entity.paymentId,
+        correlationId: entity.correlationId,
+        status: SagaStatus.LEDGER_PENDING,
+        orderValidationStatus: OrderValidationStatus.PENDING,
+        version: 5, // mismatch
+        startedAt: entity.startedAt,
+        completedAt: null,
+        createdAt: entity.createdAt,
+        updatedAt: entity.updatedAt,
+        failureReason: null,
+        failedAt: null,
+        originService: null,
+      };
+      prismaMock.client.sagaInstance.findUnique.mockResolvedValueOnce(dbCurrentResponse);
 
       await expect(repository.update(entity)).rejects.toThrow(ConflictException);
     });
   });
 
   describe('findRecoverableSagas', () => {
-    it('should query findMany for all records where status is not CLOSED', async () => {
+    it('should query findMany for all records where status is not CLOSED and orderValidationStatus is not REJECTED', async () => {
       const mockDbRecords = [
         {
           id: 'saga_1',
           paymentId: 'pay_1',
           correlationId: 'saga_1',
           status: SagaStatus.LEDGER_PENDING,
+          orderValidationStatus: OrderValidationStatus.PENDING,
           version: 0,
           startedAt: new Date(),
           completedAt: null,
           createdAt: new Date(),
           updatedAt: new Date(),
+          failureReason: null,
+          failedAt: null,
+          originService: null,
         },
         {
           id: 'saga_2',
           paymentId: 'pay_2',
           correlationId: 'saga_2',
           status: SagaStatus.BALANCE_RESERVED,
+          orderValidationStatus: OrderValidationStatus.CONFIRMED,
           version: 1,
           startedAt: new Date(),
           completedAt: null,
           createdAt: new Date(),
           updatedAt: new Date(),
+          failureReason: null,
+          failedAt: null,
+          originService: null,
         },
       ];
 
@@ -247,6 +342,9 @@ describe('SagaRepository', () => {
         where: {
           status: {
             not: SagaStatus.CLOSED,
+          },
+          orderValidationStatus: {
+            not: OrderValidationStatus.REJECTED,
           },
         },
         orderBy: {

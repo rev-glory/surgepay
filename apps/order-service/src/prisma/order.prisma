@@ -67,6 +67,12 @@ model InboxEvent {
   @@index([receivedAt])
 }
 
+enum OrderValidationStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
 enum SagaStatus {
   LEDGER_PENDING
   LEDGER_RECORDED
@@ -80,17 +86,42 @@ enum SagaStatus {
 }
 
 model SagaInstance {
-  id            String     @id
-  paymentId     String     @unique
-  correlationId String     @unique
-  status        SagaStatus @default(LEDGER_PENDING)
-  version       Int        @default(0)
+  id                    String                @id
+  paymentId             String                @unique
+  correlationId         String                @unique
+  status                SagaStatus            @default(LEDGER_PENDING)
+  orderValidationStatus OrderValidationStatus @default(PENDING)
+  version               Int                   @default(0)
+  failureReason         String?
+  failedAt              DateTime?             @db.Timestamptz(6)
+  originService         String?
 
-  startedAt     DateTime   @default(now()) @db.Timestamptz(6)
-  completedAt   DateTime?  @db.Timestamptz(6)
-  createdAt     DateTime   @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime   @updatedAt @db.Timestamptz(6)
+  startedAt             DateTime              @default(now()) @db.Timestamptz(6)
+  completedAt           DateTime?             @db.Timestamptz(6)
+  createdAt             DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime              @updatedAt @db.Timestamptz(6)
 
   @@index([status])
+  @@index([correlationId])
+}
+
+enum SagaTransitionType {
+  SAGA_STATUS
+  ORDER_VALIDATION
+}
+
+model SagaTransition {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sagaId         String
+  correlationId  String
+  transitionType SagaTransitionType
+  fromState      String
+  toState        String
+  timestamp      DateTime           @default(now()) @db.Timestamptz(6)
+  eventId        String
+  causationId    String
+  eventType      String
+
+  @@index([sagaId])
   @@index([correlationId])
 }

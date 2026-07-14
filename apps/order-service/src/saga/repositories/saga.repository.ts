@@ -1,6 +1,11 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 
-import { type SagaInstance, SagaStatus } from '../../generated/client';
+import {
+  type SagaInstance,
+  SagaStatus,
+  OrderValidationStatus,
+  SagaTransitionType,
+} from '../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SagaInstanceEntity } from '../entities/saga-instance.entity';
 
@@ -14,30 +19,68 @@ export class SagaRepository {
       model.paymentId,
       model.correlationId,
       model.status,
+      model.orderValidationStatus,
       model.version,
       model.startedAt,
       model.completedAt,
       model.createdAt,
-      model.updatedAt
+      model.updatedAt,
+      model.failureReason,
+      model.failedAt,
+      model.originService
     );
   }
 
   /**
-   * Persists a newly created Saga aggregate root.
+   * Persists a newly created Saga aggregate root and initial transition(s) inside a transaction.
    */
-  async create(entity: SagaInstanceEntity): Promise<SagaInstanceEntity> {
-    const model = await this.prisma.client.sagaInstance.create({
-      data: {
-        id: entity.id,
-        paymentId: entity.paymentId,
-        correlationId: entity.correlationId,
-        status: entity.status,
-        version: entity.version,
-        startedAt: entity.startedAt,
-        completedAt: entity.completedAt,
-      },
+  async create(
+    entity: SagaInstanceEntity,
+    transitions?: {
+      transitionType: SagaTransitionType;
+      fromState: string;
+      toState: string;
+      eventId: string;
+      causationId: string;
+      eventType: string;
+    }[]
+  ): Promise<SagaInstanceEntity> {
+    return this.prisma.client.$transaction(async (tx) => {
+      const model = await tx.sagaInstance.create({
+        data: {
+          id: entity.id,
+          paymentId: entity.paymentId,
+          correlationId: entity.correlationId,
+          status: entity.status,
+          orderValidationStatus: entity.orderValidationStatus,
+          version: entity.version,
+          startedAt: entity.startedAt,
+          completedAt: entity.completedAt,
+          failureReason: entity.failureReason,
+          failedAt: entity.failedAt,
+          originService: entity.originService,
+        },
+      });
+
+      if (transitions && transitions.length > 0) {
+        for (const t of transitions) {
+          await tx.sagaTransition.create({
+            data: {
+              sagaId: entity.id,
+              correlationId: entity.correlationId,
+              transitionType: t.transitionType,
+              fromState: t.fromState,
+              toState: t.toState,
+              eventId: t.eventId,
+              causationId: t.causationId,
+              eventType: t.eventType,
+            },
+          });
+        }
+      }
+
+      return this.mapToEntity(model);
     });
-    return this.mapToEntity(model);
   }
 
   /**
@@ -76,44 +119,79 @@ export class SagaRepository {
   /**
    * Updates an existing Saga aggregate state in the database using optimistic concurrency control.
    * Throws ConflictException if concurrency conflicts are detected.
+   * Persists explicit transition audit records within the same transaction.
    */
-  async update(entity: SagaInstanceEntity): Promise<SagaInstanceEntity> {
-    const updated = await this.prisma.client.sagaInstance.updateMany({
-      where: {
-        id: entity.id,
-        version: entity.version,
-      },
-      data: {
-        status: entity.status,
-        completedAt: entity.completedAt,
-        version: { increment: 1 },
-      },
+  async update(
+    entity: SagaInstanceEntity,
+    transitions: {
+      transitionType: SagaTransitionType;
+      fromState: string;
+      toState: string;
+      eventId: string;
+      causationId: string;
+      eventType: string;
+    }[] = []
+  ): Promise<SagaInstanceEntity> {
+    return this.prisma.client.$transaction(async (tx) => {
+      // 1. Fetch current version to verify optimistic lock
+      const current = await tx.sagaInstance.findUnique({
+        where: { id: entity.id },
+      });
+      if (!current) {
+        throw new Error(`SagaInstance with id ${entity.id} was not found`);
+      }
+      if (current.version !== entity.version) {
+        throw new ConflictException(
+          `Optimistic locking failure: SagaInstance with id ${entity.id} and version ${entity.version} was updated concurrently.`
+        );
+      }
+
+      // 2. Perform the update
+      const updatedModel = await tx.sagaInstance.update({
+        where: { id: entity.id },
+        data: {
+          status: entity.status,
+          orderValidationStatus: entity.orderValidationStatus,
+          completedAt: entity.completedAt,
+          version: { increment: 1 },
+          failureReason: entity.failureReason,
+          failedAt: entity.failedAt,
+          originService: entity.originService,
+        },
+      });
+
+      // 3. Write transition audit records passed in
+      for (const t of transitions) {
+        await tx.sagaTransition.create({
+          data: {
+            sagaId: entity.id,
+            correlationId: entity.correlationId,
+            transitionType: t.transitionType,
+            fromState: t.fromState,
+            toState: t.toState,
+            eventId: t.eventId,
+            causationId: t.causationId,
+            eventType: t.eventType,
+          },
+        });
+      }
+
+      return this.mapToEntity(updatedModel);
     });
-
-    if (updated.count === 0) {
-      throw new ConflictException(
-        `Optimistic locking failure: SagaInstance with id ${entity.id} and version ${entity.version} was updated concurrently.`
-      );
-    }
-
-    const model = await this.prisma.client.sagaInstance.findUnique({
-      where: { id: entity.id },
-    });
-    if (!model) {
-      throw new Error(`SagaInstance with id ${entity.id} was not found after update`);
-    }
-
-    return this.mapToEntity(model);
   }
 
   /**
    * Discovers all incomplete saga instances (status !== CLOSED) for recovery.
+   * Excludes sagas where order validation was rejected (terminal failure, forward path blocked).
    */
   async findRecoverableSagas(): Promise<SagaInstanceEntity[]> {
     const models = await this.prisma.client.sagaInstance.findMany({
       where: {
         status: {
           not: SagaStatus.CLOSED,
+        },
+        orderValidationStatus: {
+          not: OrderValidationStatus.REJECTED,
         },
       },
       orderBy: {

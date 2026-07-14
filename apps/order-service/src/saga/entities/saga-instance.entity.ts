@@ -1,4 +1,4 @@
-import { SagaStatus } from '../../generated/client';
+import { SagaStatus, OrderValidationStatus } from '../../generated/client';
 
 export class SagaInstanceEntity {
   constructor(
@@ -6,11 +6,15 @@ export class SagaInstanceEntity {
     public readonly paymentId: string,
     public readonly correlationId: string,
     public status: SagaStatus,
+    public orderValidationStatus: OrderValidationStatus,
     public version: number,
     public readonly startedAt: Date,
     public completedAt: Date | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
+    public failureReason: string | null = null,
+    public failedAt: Date | null = null,
+    public originService: string | null = null,
   ) {
     if (id !== correlationId) {
       throw new Error(
@@ -32,11 +36,15 @@ export class SagaInstanceEntity {
       params.paymentId,
       params.correlationId,
       SagaStatus.LEDGER_PENDING,
+      OrderValidationStatus.PENDING,
       0, // version starts at 0
       new Date(),
       null, // completedAt is populated only when CLOSED
       new Date(),
       new Date(),
+      null,
+      null,
+      null,
     );
   }
 
@@ -45,6 +53,56 @@ export class SagaInstanceEntity {
    */
   isTerminal(): boolean {
     return this.status === SagaStatus.CLOSED;
+  }
+
+  /**
+   * Determines if order validation has reached a terminal state.
+   */
+  isOrderValidationTerminal(): boolean {
+    return (
+      this.orderValidationStatus === OrderValidationStatus.CONFIRMED ||
+      this.orderValidationStatus === OrderValidationStatus.REJECTED
+    );
+  }
+
+  /**
+   * Checks if the saga is allowed to proceed forward.
+   */
+  canProceedForward(): boolean {
+    return this.orderValidationStatus !== OrderValidationStatus.REJECTED;
+  }
+
+  /**
+   * Confirms order eligibility.
+   */
+  confirmOrder(): void {
+    if (this.isTerminal()) {
+      throw new Error('Cannot confirm order validation on a terminal saga.');
+    }
+    if (this.orderValidationStatus !== OrderValidationStatus.PENDING) {
+      throw new Error(
+        `Invalid order validation transition from ${this.orderValidationStatus} to CONFIRMED`
+      );
+    }
+    this.orderValidationStatus = OrderValidationStatus.CONFIRMED;
+  }
+
+  /**
+   * Rejects order eligibility and saves failure details.
+   */
+  rejectOrder(reason: string, service: string): void {
+    if (this.isTerminal()) {
+      throw new Error('Cannot reject order validation on a terminal saga.');
+    }
+    if (this.orderValidationStatus !== OrderValidationStatus.PENDING) {
+      throw new Error(
+        `Invalid order validation transition from ${this.orderValidationStatus} to REJECTED`
+      );
+    }
+    this.orderValidationStatus = OrderValidationStatus.REJECTED;
+    this.failureReason = reason;
+    this.failedAt = new Date();
+    this.originService = service;
   }
 
   /**
@@ -58,6 +116,27 @@ export class SagaInstanceEntity {
 
     if (this.status === nextState) {
       return;
+    }
+
+    // Invariant: cannot proceed to ledger recording unless order validation is confirmed
+    if (
+      nextState === SagaStatus.LEDGER_RECORDED &&
+      this.orderValidationStatus !== OrderValidationStatus.CONFIRMED
+    ) {
+      throw new Error(
+        `Cannot transition financial status to LEDGER_RECORDED when order validation is ${this.orderValidationStatus}`
+      );
+    }
+
+    // Invariant: block forward financial execution when order validation is rejected
+    if (
+      !this.canProceedForward() &&
+      nextState !== SagaStatus.REVERSED &&
+      nextState !== SagaStatus.CLOSED
+    ) {
+      throw new Error(
+        `Cannot perform forward transition to ${nextState} when order validation is REJECTED`
+      );
     }
 
     const isValid = this.isValidTransition(this.status, nextState);
@@ -114,3 +193,4 @@ export class SagaInstanceEntity {
     return false;
   }
 }
+

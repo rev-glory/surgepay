@@ -80,7 +80,8 @@ describe('SagaService', () => {
         paymentId: 'pay_abc',
         correlationId: 'corr_54321',
         status: 'LEDGER_PENDING',
-      })
+      }),
+      expect.any(Array)
     );
   });
 
