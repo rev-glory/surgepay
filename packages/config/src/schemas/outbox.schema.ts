@@ -25,4 +25,12 @@ export const outboxSchema = z.object({
     (val) => (val ? parseInt(String(val), 10) : undefined),
     z.number().int().positive().default(300000),
   ),
+  OUTBOX_MAX_IN_FLIGHT_MESSAGES: z.preprocess(
+    (val) => (val ? parseInt(String(val), 10) : undefined),
+    z.number().int().positive().default(1000),
+  ),
+  OUTBOX_FLUSH_INTERVAL: z.preprocess(
+    (val) => (val ? parseInt(String(val), 10) : undefined),
+    z.number().int().positive().default(100),
+  ),
 });

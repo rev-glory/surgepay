@@ -16,6 +16,7 @@
     "test:integration": "tsx scripts/run-integration-tests.ts",
     "test:e2e": "jest --config jest.e2e.config.js --runInBand --forceExit",
     "benchmark": "ts-node --files --project tsconfig.base.json scripts/benchmark.ts",
+    "benchmark:messaging": "ts-node --files --project tsconfig.base.json scripts/benchmark-messaging.ts",
     "test": "turbo run test && pnpm test:integration",
     "clean": "turbo run clean && rimraf --glob node_modules \"apps/*/node_modules\" \"packages/*/node_modules\" \"apps/*/dist\" \"packages/*/dist\""
   },

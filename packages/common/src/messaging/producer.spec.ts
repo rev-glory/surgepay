@@ -9,6 +9,7 @@ import { KafkaEventProducer } from './producer';
 
 // Mock kafkajs
 const mockSend = jest.fn();
+const mockSendBatch = jest.fn();
 jest.mock('kafkajs', () => {
   return {
     Kafka: jest.fn().mockImplementation(() => {
@@ -18,6 +19,7 @@ jest.mock('kafkajs', () => {
             connect: jest.fn().mockResolvedValue(undefined),
             disconnect: jest.fn().mockResolvedValue(undefined),
             send: mockSend,
+            sendBatch: mockSendBatch,
           };
         }),
       };
@@ -177,5 +179,52 @@ describe('KafkaEventProducer Tracing Unit Tests', () => {
       'Telemetry tracing initialization failed, degrading gracefully',
       { error: 'Trace API crashed' },
     );
+  });
+
+  describe('publishBatch Tracing Unit Tests', () => {
+    it('should independently trace multiple events in a batch and inject traceparent correctly', async () => {
+      mockSendBatch.mockResolvedValueOnce([
+        { topicName: 'test-topic-1', partition: 0, offset: '10' },
+        { topicName: 'test-topic-2', partition: 1, offset: '20' },
+      ]);
+
+      const items = [
+        {
+          topic: 'test-topic-1',
+          key: 'payment_1',
+          event: { ...mockEnvelope, eventId: 'evt_1', eventType: 'PaymentInitiated' },
+        },
+        {
+          topic: 'test-topic-2',
+          key: 'payment_2',
+          event: { ...mockEnvelope, eventId: 'evt_2', eventType: 'PaymentCompleted' },
+        },
+      ];
+
+      const result = await producer.publishBatch(items);
+
+      // Verify that sendBatch was called
+      expect(mockSendBatch).toHaveBeenCalled();
+
+      // Verify returned metadata mapping
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual(expect.objectContaining({ eventId: 'evt_1', partition: 0, offset: '10' }));
+      expect(result[1]).toEqual(expect.objectContaining({ eventId: 'evt_2', partition: 1, offset: '20' }));
+
+      // Verify distinct tracer spans were created
+      expect(mockTracer.startSpan).toHaveBeenCalledTimes(2);
+      expect(mockTracer.startSpan).toHaveBeenNthCalledWith(
+        1,
+        'test-topic-1 send',
+        expect.anything(),
+        expect.anything()
+      );
+      expect(mockTracer.startSpan).toHaveBeenNthCalledWith(
+        2,
+        'test-topic-2 send',
+        expect.anything(),
+        expect.anything()
+      );
+    });
   });
 });

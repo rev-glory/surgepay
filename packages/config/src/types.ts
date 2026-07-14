@@ -73,4 +73,6 @@ export interface OutboxConfig {
   publishTimeout: number;
   retentionDays: number;
   staleTimeoutMs: number;
+  maxInFlightMessages: number;
+  flushInterval: number;
 }

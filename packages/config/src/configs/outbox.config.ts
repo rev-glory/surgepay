@@ -17,4 +17,10 @@ export default registerAs('outbox', (): OutboxConfig => ({
   staleTimeoutMs: process.env.OUTBOX_STALE_TIMEOUT
     ? parseInt(process.env.OUTBOX_STALE_TIMEOUT, 10)
     : 300000,
+  maxInFlightMessages: process.env.OUTBOX_MAX_IN_FLIGHT_MESSAGES
+    ? parseInt(process.env.OUTBOX_MAX_IN_FLIGHT_MESSAGES, 10)
+    : 1000,
+  flushInterval: process.env.OUTBOX_FLUSH_INTERVAL
+    ? parseInt(process.env.OUTBOX_FLUSH_INTERVAL, 10)
+    : 100,
 }));

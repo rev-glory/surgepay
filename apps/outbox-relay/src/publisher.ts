@@ -11,6 +11,7 @@ import type { OutboxEvent } from './generated/client';
 
 export interface EventPublisher {
   publish(event: OutboxEvent): Promise<{ partition: number; offset: string }>;
+  publishBatch(events: OutboxEvent[]): Promise<{ id: string; partition: number; offset: string }[]>;
 }
 
 export const EVENT_PUBLISHER = 'EVENT_PUBLISHER';
@@ -55,6 +56,22 @@ export class ConsoleEventPublisher implements EventPublisher {
       causationId: event.causationId,
     });
     return { partition: 0, offset: '0' };
+  }
+
+  async publishBatch(events: OutboxEvent[]): Promise<{ id: string; partition: number; offset: string }[]> {
+    const results = [];
+    for (const event of events) {
+      this.logger.info('Event delegated to publisher boundary placeholder (batch)', {
+        eventId: event.id,
+        eventType: event.eventType,
+        aggregateId: event.aggregateId,
+        correlationId: event.correlationId,
+        requestId: event.requestId,
+        causationId: event.causationId,
+      });
+      results.push({ id: event.id, partition: 0, offset: '0' });
+    }
+    return results;
   }
 }
 
@@ -126,6 +143,69 @@ export class KafkaOutboxPublisher implements EventPublisher {
           eventType: event.eventType,
           correlationId: event.correlationId,
           topic,
+        },
+        err,
+      );
+    }
+  }
+
+  async publishBatch(events: OutboxEvent[]): Promise<{ id: string; partition: number; offset: string }[]> {
+    const items = events.map((event) => {
+      const envelope = event.payload as unknown as BaseEventEnvelope<unknown>;
+      if (!envelope || typeof envelope !== 'object') {
+        throw new EnvelopeMismatchException('Outbox event payload is not a valid object');
+      }
+      const topic = TOPIC_REGISTRY[event.eventType];
+      if (!topic) {
+        throw new OutboxPublicationException(
+          `No topic mapping found for event type: ${event.eventType}`,
+          {
+            eventId: event.id,
+            eventType: event.eventType,
+            correlationId: event.correlationId,
+            topic: '',
+          },
+        );
+      }
+      return {
+        topic,
+        key: event.aggregateId,
+        event: envelope,
+        headers: (event.traceHeaders as Record<string, string>) || undefined,
+        originalEvent: event,
+      };
+    });
+
+    try {
+      const metadataList = await this.producer.publishBatch(
+        items.map(item => ({
+          topic: item.topic,
+          key: item.key,
+          event: item.event,
+          headers: item.headers,
+        }))
+      );
+
+      return metadataList.map((meta) => {
+        const originalEvent = events.find((e) => {
+          const envelope = e.payload as any;
+          return envelope && envelope.eventId === meta.eventId;
+        });
+        return {
+          id: originalEvent ? originalEvent.id : meta.eventId,
+          partition: meta.partition,
+          offset: meta.offset ?? '0',
+        };
+      });
+    } catch (err) {
+      const firstItem = items[0];
+      throw new OutboxPublicationException(
+        `Kafka batch publish failed: ${err instanceof Error ? err.message : String(err)}`,
+        {
+          eventId: firstItem ? firstItem.originalEvent.id : 'unknown',
+          eventType: firstItem ? firstItem.originalEvent.eventType : 'unknown',
+          correlationId: firstItem ? firstItem.originalEvent.correlationId : 'unknown',
+          topic: firstItem ? firstItem.topic : 'unknown',
         },
         err,
       );

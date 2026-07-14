@@ -211,4 +211,75 @@ export class OutboxRepository {
       },
     });
   }
+
+  async markPublishedBatch(items: { id: string; partition: number; offset: string }[]): Promise<void> {
+    if (items.length === 0) return;
+    try {
+      const sql = `
+        UPDATE "payment"."OutboxEvent" as e
+        SET 
+          status = 'PUBLISHED',
+          "publishedAt" = NOW(),
+          partition = v.part,
+          "offset" = v.off
+        FROM (
+          VALUES 
+            ${items.map((_, idx) => `($${idx * 3 + 1}::uuid, $${idx * 3 + 2}::integer, $${idx * 3 + 3}::text)`).join(', ')}
+        ) as v(id, part, off)
+        WHERE e.id = v.id AND e.status = 'PUBLISHING'
+      `;
+      const params = items.flatMap((item) => [item.id, item.partition, item.offset]);
+      await this.prisma.client.$executeRawUnsafe(sql, ...params);
+
+      this.logger.info('Outbox events marked as PUBLISHED successfully (batch)', {
+        count: items.length,
+      });
+    } catch (err) {
+      this.logger.error('Failed to transition outbox events to PUBLISHED (batch). State conflict or missing record.', err);
+      throw err;
+    }
+  }
+
+  async markFailedBatch(ids: string[], errorMsg: string, retryLimit: number): Promise<void> {
+    if (ids.length === 0) return;
+    try {
+      await this.prisma.client.$transaction(async (tx) => {
+        // Step 1: Increment retryCount and transition to FAILED
+        await tx.outboxEvent.updateMany({
+          where: {
+            id: { in: ids },
+            status: OutboxStatus.PUBLISHING,
+          },
+          data: {
+            status: OutboxStatus.FAILED,
+            retryCount: {
+              increment: 1,
+            },
+          },
+        });
+
+        // Step 2: Transition back to RETRYING for those below the retryLimit
+        await tx.outboxEvent.updateMany({
+          where: {
+            id: { in: ids },
+            status: OutboxStatus.FAILED,
+            retryCount: {
+              lt: retryLimit,
+            },
+          },
+          data: {
+            status: OutboxStatus.RETRYING,
+          },
+        });
+      });
+
+      this.logger.warn('Outbox events transitioned to FAILED/RETRYING states (batch)', {
+        count: ids.length,
+        error: errorMsg,
+      });
+    } catch (err) {
+      this.logger.error('Failed to transition outbox events to FAILED/RETRYING (batch). State conflict.', err);
+      throw err;
+    }
+  }
 }

@@ -41,7 +41,7 @@ export class OutboxScheduler implements OnApplicationBootstrap, OnApplicationShu
       return;
     }
 
-    const interval = this.config.outbox.pollingInterval;
+    const interval = this.config.outbox.flushInterval;
     this.timeoutId = setTimeout(async () => {
       if (!this.isRunning) return;
 

@@ -26,6 +26,9 @@ export class MetricsService {
   private readonly outboxPublished: Gauge<string>;
   private readonly outboxFailed: Gauge<string>;
   private readonly outboxLag: Histogram<string>;
+  private readonly outboxBatchSize: Histogram<string>;
+  private readonly outboxInFlight: Gauge<string>;
+  private readonly outboxCycleDuration: Histogram<string>;
 
   // Inbox & DLQ Metrics
   private readonly inboxReceived: Counter<string>;
@@ -158,6 +161,23 @@ export class MetricsService {
       ['service', 'eventType'],
       [100, 500, 1000, 2500, 5000, 10000, 30000, 60000],
     );
+    this.outboxBatchSize = getOrRegisterHistogram(
+      'outbox_batch_size',
+      'Distribution of outbox event batch sizes sent in a single publish operation',
+      ['service'],
+      [1, 5, 10, 25, 50, 100, 250, 500, 1000],
+    );
+    this.outboxInFlight = getOrRegisterGauge(
+      'outbox_relay_in_flight_messages',
+      'Current count of outbox events currently in-flight publishing to Kafka',
+      ['service'],
+    );
+    this.outboxCycleDuration = getOrRegisterHistogram(
+      'outbox_relay_cycle_duration_ms',
+      'Duration of a single Outbox Relay poll/publish cycle in milliseconds',
+      ['service'],
+      [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000],
+    );
 
     // 4. Inbox & DLQ Metrics
     this.inboxReceived = getOrRegisterCounter(
@@ -235,6 +255,18 @@ export class MetricsService {
 
   recordOutboxLag(service: string, eventType: string, lagMs: number): void {
     this.outboxLag.observe({ service, eventType }, lagMs);
+  }
+
+  recordOutboxBatchSize(service: string, batchSize: number): void {
+    this.outboxBatchSize.observe({ service }, batchSize);
+  }
+
+  setOutboxInFlight(service: string, count: number): void {
+    this.outboxInFlight.set({ service }, count);
+  }
+
+  recordOutboxCycleDuration(service: string, durationMs: number): void {
+    this.outboxCycleDuration.observe({ service }, durationMs);
   }
 
   // --- Helper Methods for Inbox & DLQ ---
