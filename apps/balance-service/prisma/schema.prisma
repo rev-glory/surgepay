@@ -88,3 +88,23 @@ model MerchantBalance {
   @@index([merchantId])
   @@index([updatedAt])
 }
+
+// Provides business-level idempotency for ReverseBalance operations.
+// The Inbox deduplicates by (consumer, eventId), but a logically identical
+// ReverseBalance re-dispatched with a new eventId would bypass the Inbox and
+// release the same reservation twice. BalanceReversal.paymentId @unique enforces
+// that only one reversal can ever succeed per payment, regardless of how many
+// commands arrive. Checked inside the same Prisma transaction as releaseFunds
+// and the outbox write, so the constraint fires atomically.
+model BalanceReversal {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  paymentId  String   @unique                 // Prevents double-reversal per payment
+  merchantId String
+  currency   String
+  amount     Int                              // integer cents — the amount released
+  commandId  String                           // eventId of the ReverseBalance command that created this
+  reversedAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([merchantId])
+  @@index([reversedAt])
+}

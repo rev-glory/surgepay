@@ -1,10 +1,12 @@
 import { Test, type TestingModule } from '@nestjs/testing';
+
 import { LoggerService } from '@surgepay/common';
 import { ConfigService } from '@surgepay/config';
-import { SagaTimeoutScanner } from './saga-timeout.scanner';
-import { SagaRepository } from '../repositories/saga.repository';
-import { OrderOutboxRepository } from '../repositories/order-outbox.repository';
+
 import { SagaStatus } from '../../generated/client';
+import { OrderOutboxRepository } from '../repositories/order-outbox.repository';
+import { SagaRepository } from '../repositories/saga.repository';
+import { SagaTimeoutScanner } from './saga-timeout.scanner';
 
 describe('SagaTimeoutScanner', () => {
   let scanner: SagaTimeoutScanner;

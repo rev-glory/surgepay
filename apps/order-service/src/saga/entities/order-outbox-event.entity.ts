@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+
 import { OutboxStatus } from '../../generated/client';
 
 export class OrderOutboxEventEntity {

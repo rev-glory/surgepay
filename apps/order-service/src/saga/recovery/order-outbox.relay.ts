@@ -1,5 +1,7 @@
 import { Injectable, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
+
 import { KafkaEventProducer, LoggerService, TOPIC_REGISTRY } from '@surgepay/common';
+
 import { OrderOutboxRepository } from '../repositories/order-outbox.repository';
 
 @Injectable()

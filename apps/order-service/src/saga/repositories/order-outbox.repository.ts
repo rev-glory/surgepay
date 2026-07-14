@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
+
 import { LoggerService } from '@surgepay/common';
-import { OrderOutboxEventEntity } from '../entities/order-outbox-event.entity';
+
 import { OrderOutboxEvent, OutboxStatus, Prisma } from '../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { OrderOutboxEventEntity } from '../entities/order-outbox-event.entity';
 
 @Injectable()
 export class OrderOutboxRepository {

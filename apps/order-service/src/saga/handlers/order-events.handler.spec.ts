@@ -23,6 +23,7 @@ import {
   SagaTransitionType,
 } from '../../generated/client';
 import { OrderInboxRepository } from '../../repositories/inbox.repository';
+import { CompensationCoordinator } from '../compensation/compensation.coordinator';
 import { CommandDispatcher } from '../dispatchers/command.dispatcher';
 import { SagaInstanceEntity } from '../entities/saga-instance.entity';
 import { SagaRepository } from '../repositories/saga.repository';
@@ -165,6 +166,14 @@ describe('SagaOrderEventsConsumer & Saga Invariants', () => {
         {
           provide: CommandDispatcher,
           useValue: { dispatch: jest.fn() },
+        },
+        {
+          provide: CompensationCoordinator,
+          useValue: {
+            initiateCompensation: jest.fn().mockResolvedValue(undefined),
+            handleBalanceReversedAck: jest.fn().mockResolvedValue(undefined),
+            handleLedgerReversedAck: jest.fn().mockResolvedValue(undefined),
+          },
         },
       ],
     }).compile();

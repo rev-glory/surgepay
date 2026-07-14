@@ -11,8 +11,10 @@ import { ConfigService } from '@surgepay/config';
 import {
   BALANCE_RESERVATION_FAILED,
   BALANCE_RESERVED,
+  BALANCE_REVERSED,
   type BalanceReservationFailedEvent,
   type BalanceReservedEvent,
+  type BalanceReversedEvent,
   BaseEventEnvelope,
 } from '@surgepay/events';
 
@@ -38,14 +40,6 @@ export class SagaBalanceEventsConsumer extends BaseKafkaConsumer {
   protected async handleEvent(envelope: BaseEventEnvelope<unknown>): Promise<void> {
     const { eventType, eventId } = envelope;
 
-    if (eventType !== BALANCE_RESERVED && eventType !== BALANCE_RESERVATION_FAILED) {
-      this.logger.info(`Ignoring non-saga balance event type: ${eventType}`, {
-        eventId,
-        eventType,
-      });
-      return;
-    }
-
     if (eventType === BALANCE_RESERVED) {
       const event = envelope as BalanceReservedEvent;
       const payload = event.payload;
@@ -70,7 +64,10 @@ export class SagaBalanceEventsConsumer extends BaseKafkaConsumer {
       });
 
       await this.sagaService.processBalanceReserved(event);
-    } else if (eventType === BALANCE_RESERVATION_FAILED) {
+      return;
+    }
+
+    if (eventType === BALANCE_RESERVATION_FAILED) {
       const event = envelope as BalanceReservationFailedEvent;
       const payload = event.payload;
 
@@ -96,6 +93,39 @@ export class SagaBalanceEventsConsumer extends BaseKafkaConsumer {
       });
 
       await this.sagaService.processBalanceReservationFailed(event);
+      return;
     }
+
+    if (eventType === BALANCE_REVERSED) {
+      const event = envelope as BalanceReversedEvent;
+      const payload = event.payload;
+
+      if (
+        !payload ||
+        typeof payload !== 'object' ||
+        typeof payload.paymentId !== 'string' ||
+        !payload.paymentId.trim()
+      ) {
+        throw new MalformedEventEnvelopeException(
+          'Invalid or missing BalanceReversed event payload properties'
+        );
+      }
+
+      this.logger.info('Processing BalanceReversed event inside Saga Orchestrator (compensation path)', {
+        eventId: event.eventId,
+        eventType: event.eventType,
+        paymentId: payload.paymentId,
+        correlationId: event.correlationId,
+        sagaId: event.sagaId,
+      });
+
+      await this.sagaService.processBalanceReversedForCompensation(event);
+      return;
+    }
+
+    this.logger.info(`Ignoring non-saga balance event type: ${eventType}`, {
+      eventId,
+      eventType,
+    });
   }
 }

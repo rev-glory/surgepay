@@ -4,23 +4,25 @@ import { KafkaEventProducer, LoggerModule, MetricsModule } from '@surgepay/commo
 import { ConfigModule } from '@surgepay/config';
 
 import { OrderInboxRepository } from '../repositories/inbox.repository';
+import { CompensationCoordinator } from './compensation/compensation.coordinator';
 import { CommandDispatcher } from './dispatchers/command.dispatcher';
 import { SagaBalanceEventsConsumer } from './handlers/balance-events.handler';
 import { SagaLedgerEventsConsumer } from './handlers/ledger-events.handler';
 import { SagaOrderEventsConsumer } from './handlers/order-events.handler';
 import { SagaPaymentCompletedConsumer } from './handlers/payment-completed.handler';
 import { SagaRiskEventsConsumer } from './handlers/risk-events.handler';
+import { OrderOutboxRelay } from './recovery/order-outbox.relay';
+import { RetryEventsConsumer } from './recovery/retry-events.consumer';
+import { SagaTimeoutScanner } from './recovery/saga-timeout.scanner';
+import { OrderOutboxRepository } from './repositories/order-outbox.repository';
 import { SagaRepository } from './repositories/saga.repository';
 import { SagaService } from './saga.service';
-import { OrderOutboxRepository } from './repositories/order-outbox.repository';
-import { OrderOutboxRelay } from './recovery/order-outbox.relay';
-import { SagaTimeoutScanner } from './recovery/saga-timeout.scanner';
-import { RetryEventsConsumer } from './recovery/retry-events.consumer';
 
 @Module({
   imports: [ConfigModule, LoggerModule, MetricsModule],
   providers: [
     SagaService,
+    CompensationCoordinator,
     SagaPaymentCompletedConsumer,
     SagaOrderEventsConsumer,
     SagaLedgerEventsConsumer,
@@ -37,6 +39,7 @@ import { RetryEventsConsumer } from './recovery/retry-events.consumer';
   ],
   exports: [
     SagaService,
+    CompensationCoordinator,
     SagaPaymentCompletedConsumer,
     SagaOrderEventsConsumer,
     SagaLedgerEventsConsumer,

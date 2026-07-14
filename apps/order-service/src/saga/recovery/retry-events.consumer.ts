@@ -1,4 +1,5 @@
 import { Injectable, Optional } from '@nestjs/common';
+
 import {
   BaseKafkaConsumer,
   KafkaEventProducer,
@@ -14,6 +15,7 @@ import {
   type SagaRetryRegisteredEvent,
   type SagaStepExecutionFailedEvent,
 } from '@surgepay/events';
+
 import { OrderInboxRepository } from '../../repositories/inbox.repository';
 import { SagaService } from '../saga.service';
 

@@ -21,6 +21,7 @@ import {
 } from '@surgepay/events';
 
 import { OrderValidationStatus, SagaStatus } from '../generated/client';
+import { CompensationCoordinator } from './compensation/compensation.coordinator';
 import { CommandDispatcher } from './dispatchers/command.dispatcher';
 import { SagaInstanceEntity } from './entities/saga-instance.entity';
 import { SagaRepository } from './repositories/saga.repository';
@@ -37,6 +38,12 @@ describe('SagaService', () => {
   };
   let commandDispatcherMock: {
     dispatch: jest.Mock;
+  };
+  let compensationCoordinatorMock: {
+    initiateCompensation: jest.Mock;
+    handleBalanceReversedAck: jest.Mock;
+    handleLedgerReversedAck: jest.Mock;
+    classifyScenario: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -55,6 +62,12 @@ describe('SagaService', () => {
     commandDispatcherMock = {
       dispatch: jest.fn().mockResolvedValue([]),
     };
+    compensationCoordinatorMock = {
+      initiateCompensation: jest.fn().mockResolvedValue(undefined),
+      handleBalanceReversedAck: jest.fn().mockResolvedValue(undefined),
+      handleLedgerReversedAck: jest.fn().mockResolvedValue(undefined),
+      classifyScenario: jest.fn().mockReturnValue('SCENARIO_1'),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -70,6 +83,10 @@ describe('SagaService', () => {
         {
           provide: CommandDispatcher,
           useValue: commandDispatcherMock,
+        },
+        {
+          provide: CompensationCoordinator,
+          useValue: compensationCoordinatorMock,
         },
       ],
     }).compile();
@@ -542,6 +559,93 @@ describe('SagaService', () => {
       expect(() => saga.transitionTo(SagaStatus.BALANCE_RESERVED)).toThrow(
         /Cannot perform forward transition to BALANCE_RESERVED when.*Saga has failed/
       );
+
+      // §6.2 Scenario 2: compensation initiated
+      expect(compensationCoordinatorMock.initiateCompensation).toHaveBeenCalledWith(
+        saga,
+        balanceEvent
+      );
+    });
+  });
+
+  // ─── Compensation delegation tests ──────────────────────────────────────────
+
+  describe('processEligibilityDenied — §6.2 Scenario 1 compensation delegation', () => {
+    it('delegates to CompensationCoordinator after persisting failure metadata', async () => {
+      const saga = new SagaInstanceEntity(
+        'corr_test',
+        'pay_elig',
+        'corr_test',
+        SagaStatus.ELIGIBILITY_PENDING,
+        OrderValidationStatus.CONFIRMED,
+        'merch_test',
+        3000,
+        'USD',
+        0,
+        new Date(),
+        null,
+        new Date(),
+        new Date()
+      );
+      sagaRepositoryMock.findById.mockResolvedValue(saga);
+
+      const event: EligibilityDeniedEvent = {
+        eventId: 'evt-elig-denied',
+        eventType: ELIGIBILITY_DENIED,
+        correlationId: 'corr_test',
+        causationId: 'prior',
+        sagaId: 'corr_test',
+        timestamp: new Date().toISOString(),
+        version: 1,
+        payload: { paymentId: 'pay_elig', merchantId: 'merch_test', reason: 'denied', deniedAt: new Date().toISOString() },
+      };
+
+      await service.processEligibilityDenied(event);
+
+      // Failure metadata must be set before delegation
+      expect(saga.failureReason).toContain('denied');
+      expect(saga.originService).toBe('risk-engine');
+      expect(sagaRepositoryMock.update).toHaveBeenCalledWith(saga);
+
+      // Coordinator delegation
+      expect(compensationCoordinatorMock.initiateCompensation).toHaveBeenCalledWith(saga, event);
+    });
+
+    it('skips compensation delegation if saga already has failureReason set', async () => {
+      const saga = new SagaInstanceEntity(
+        'corr_test',
+        'pay_dup',
+        'corr_test',
+        SagaStatus.ELIGIBILITY_PENDING,
+        OrderValidationStatus.CONFIRMED,
+        'merch_test',
+        3000,
+        'USD',
+        0,
+        new Date(),
+        null,
+        new Date(),
+        new Date()
+      );
+      saga.failureReason = 'already failed';
+      sagaRepositoryMock.findById.mockResolvedValue(saga);
+
+      const event: EligibilityDeniedEvent = {
+        eventId: 'evt-dup',
+        eventType: ELIGIBILITY_DENIED,
+        correlationId: 'corr_test',
+        causationId: 'prior',
+        sagaId: 'corr_test',
+        timestamp: new Date().toISOString(),
+        version: 1,
+        payload: { paymentId: 'pay_dup', merchantId: 'merch_test', reason: 'denied-again', deniedAt: new Date().toISOString() },
+      };
+
+      await service.processEligibilityDenied(event);
+
+      // No update and no compensation dispatch on duplicate
+      expect(sagaRepositoryMock.update).not.toHaveBeenCalled();
+      expect(compensationCoordinatorMock.initiateCompensation).not.toHaveBeenCalled();
     });
   });
 });

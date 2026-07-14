@@ -285,4 +285,20 @@ export class SagaRepository {
 
     return models.map((model) => this.mapToEntity(model));
   }
+
+  /**
+   * Returns true if a COMPENSATION_STEP SagaTransition with the given toState label
+   * exists for the specified saga. Used by CompensationCoordinator to validate that
+   * compensation acks are expected and not spurious duplicate deliveries.
+   */
+  async hasCompensationStep(sagaId: string, stepLabel: string): Promise<boolean> {
+    const count = await this.prisma.client.sagaTransition.count({
+      where: {
+        sagaId,
+        transitionType: SagaTransitionType.COMPENSATION_STEP,
+        toState: stepLabel,
+      },
+    });
+    return count > 0;
+  }
 }

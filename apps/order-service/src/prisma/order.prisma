@@ -120,6 +120,12 @@ model SagaInstance {
 enum SagaTransitionType {
   SAGA_STATUS
   ORDER_VALIDATION
+  // Compensation progress checkpoints — used by CompensationCoordinator to
+  // persist durable markers at each compensation step (BALANCE_REVERSAL_DISPATCHED,
+  // BALANCE_REVERSAL_ACKNOWLEDGED, LEDGER_REVERSAL_DISPATCHED). These are not
+  // saga status transitions; they allow crash recovery to determine which
+  // compensation step was reached before the process died.
+  COMPENSATION_STEP
 }
 
 model SagaTransition {

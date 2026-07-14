@@ -12,8 +12,11 @@ import { ConfigService } from '@surgepay/config';
 import {
   LEDGER_ENTRY_RECORDED,
   LEDGER_RECORDING_FAILED,
+  LEDGER_REVERSED,
   RECORD_LEDGER_ENTRY,
   type RecordLedgerEntryCommand,
+  REVERSE_LEDGER_ENTRY,
+  type ReverseLedgerEntryCommand,
 } from '@surgepay/events';
 
 import { LedgerEntryEntity } from '../entities/ledger-entry.entity';
@@ -96,6 +99,8 @@ describe('Ledger Command Handling & Domain Logic Spec', () => {
             findBySourceCommandId: jest.fn(),
             findById: jest.fn(),
             findByPaymentId: jest.fn(),
+            findOriginalByPaymentId: jest.fn(),
+            findCompensationByOriginalEntryId: jest.fn(),
           },
         },
         {
@@ -159,6 +164,23 @@ describe('Ledger Command Handling & Domain Logic Spec', () => {
       currency: 'USD',
       entryType: 'DEBIT',
       description: 'Test settlement',
+    },
+  });
+
+  const makeValidReverseCommand = (): ReverseLedgerEntryCommand => ({
+    eventId: 'cmd_rev_123',
+    eventType: REVERSE_LEDGER_ENTRY,
+    correlationId: 'corr_xyz',
+    causationId: 'cause_abc',
+    sagaId: 'corr_xyz',
+    timestamp: new Date().toISOString(),
+    version: 1,
+    payload: {
+      paymentId: 'pay_111',
+      merchantId: 'merch_222',
+      amount: 15000,
+      currency: 'USD',
+      reason: 'Saga compensation reversal',
     },
   });
 
@@ -226,6 +248,61 @@ describe('Ledger Command Handling & Domain Logic Spec', () => {
       expect(ledgerService.recordEntry).toHaveBeenCalledWith(command.payload, command);
       expect(mockLogger.error).toHaveBeenCalledWith(
         'RecordLedgerEntry failed permanently',
+        expect.any(Object)
+      );
+    });
+
+    it('should delegate valid ReverseLedgerEntry command to LedgerService', async () => {
+      const command = makeValidReverseCommand();
+      jest.spyOn(ledgerService, 'reverseEntry').mockResolvedValue({
+        success: true,
+        reversalEntry: new LedgerEntryEntity(
+          'reversal_entry_uuid',
+          command.payload.paymentId,
+          command.payload.merchantId,
+          command.payload.amount,
+          command.payload.currency,
+          LedgerEntryType.CREDIT,
+          'Reversal description',
+          new Date(),
+          command.eventId,
+          command.correlationId,
+          command.causationId,
+          command.sagaId,
+          'orig_entry_id'
+        ),
+      });
+
+      await (consumer as any).handleEvent(command);
+
+      expect(ledgerService.reverseEntry).toHaveBeenCalledWith(command.payload, command);
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'ReverseLedgerEntry processed successfully',
+        expect.any(Object)
+      );
+    });
+
+    it('should throw MalformedEventEnvelopeException if ReverseLedgerEntry payload lacks reason', async () => {
+      const command = makeValidReverseCommand();
+      command.payload.reason = undefined as any;
+
+      await expect((consumer as any).handleEvent(command)).rejects.toThrow(
+        MalformedEventEnvelopeException
+      );
+    });
+
+    it('should finish cleanly and not bubble up exception on ReverseLedgerEntry permanent failure', async () => {
+      const command = makeValidReverseCommand();
+      jest.spyOn(ledgerService, 'reverseEntry').mockResolvedValue({
+        success: false,
+        reason: 'No original ledger entry found',
+      });
+
+      await (consumer as any).handleEvent(command);
+
+      expect(ledgerService.reverseEntry).toHaveBeenCalledWith(command.payload, command);
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'ReverseLedgerEntry failed permanently',
         expect.any(Object)
       );
     });
@@ -369,6 +446,209 @@ describe('Ledger Command Handling & Domain Logic Spec', () => {
       jest.spyOn(ledgerRepository, 'create').mockRejectedValue(randomDbError);
 
       await expect(ledgerService.recordEntry(payload, command)).rejects.toThrow(
+        'Connection timeout'
+      );
+    });
+  });
+
+  describe('LedgerService reverseEntry & Idempotency logic', () => {
+    it('should fail cleanly when original ledger entry is not found', async () => {
+      const command = makeValidReverseCommand();
+      jest.spyOn(ledgerRepository, 'findOriginalByPaymentId').mockResolvedValue(null);
+
+      const result = await ledgerService.reverseEntry(command.payload, command);
+
+      expect(result.success).toBe(false);
+      expect(result.reason).toContain('No original ledger entry found');
+      expect(ledgerRepository.create).not.toHaveBeenCalled();
+      expect(outboxRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should create CREDIT entry with reversalOf referencing original entry and write LEDGER_REVERSED to outbox', async () => {
+      const command = makeValidReverseCommand();
+      const payload = command.payload;
+
+      const originalEntry = new LedgerEntryEntity(
+        'orig_entry_id',
+        payload.paymentId,
+        payload.merchantId,
+        payload.amount,
+        payload.currency,
+        LedgerEntryType.DEBIT,
+        'original DEBIT',
+        new Date(),
+        'orig_cmd_123',
+        command.correlationId,
+        command.causationId,
+        command.sagaId
+      );
+
+      const reversalEntry = new LedgerEntryEntity(
+        'rev_entry_id',
+        payload.paymentId,
+        payload.merchantId,
+        payload.amount,
+        payload.currency,
+        LedgerEntryType.CREDIT,
+        'compensation CREDIT',
+        new Date(),
+        command.eventId,
+        command.correlationId,
+        command.causationId,
+        command.sagaId,
+        'orig_entry_id'
+      );
+
+      jest.spyOn(ledgerRepository, 'findOriginalByPaymentId').mockResolvedValue(originalEntry);
+      jest.spyOn(ledgerRepository, 'findCompensationByOriginalEntryId').mockResolvedValue(null);
+      jest.spyOn(ledgerRepository, 'create').mockResolvedValue(reversalEntry);
+
+      const result = await ledgerService.reverseEntry(payload, command);
+
+      expect(result.success).toBe(true);
+      expect(result.reversalEntry?.reversalOf).toBe('orig_entry_id');
+      expect(ledgerRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entryType: 'CREDIT',
+          reversalOf: 'orig_entry_id',
+        }),
+        expect.any(Object)
+      );
+      expect(outboxRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: LEDGER_REVERSED,
+          aggregateId: 'rev_entry_id',
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it('should return existing compensation entry (idempotency skip) if it already exists', async () => {
+      const command = makeValidReverseCommand();
+      const payload = command.payload;
+
+      const originalEntry = new LedgerEntryEntity(
+        'orig_entry_id',
+        payload.paymentId,
+        payload.merchantId,
+        payload.amount,
+        payload.currency,
+        LedgerEntryType.DEBIT,
+        'original DEBIT',
+        new Date(),
+        'orig_cmd_123',
+        command.correlationId,
+        command.causationId,
+        command.sagaId
+      );
+
+      const existingReversal = new LedgerEntryEntity(
+        'existing_rev_entry_id',
+        payload.paymentId,
+        payload.merchantId,
+        payload.amount,
+        payload.currency,
+        LedgerEntryType.CREDIT,
+        'already compensated',
+        new Date(),
+        'other_cmd_eventId',
+        command.correlationId,
+        command.causationId,
+        command.sagaId,
+        'orig_entry_id'
+      );
+
+      jest.spyOn(ledgerRepository, 'findOriginalByPaymentId').mockResolvedValue(originalEntry);
+      jest.spyOn(ledgerRepository, 'findCompensationByOriginalEntryId').mockResolvedValue(existingReversal);
+
+      const result = await ledgerService.reverseEntry(payload, command);
+
+      expect(result.success).toBe(true);
+      expect(result.reversalEntry?.id).toBe('existing_rev_entry_id');
+      expect(ledgerRepository.create).not.toHaveBeenCalled();
+      expect(outboxRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should handle concurrent insert race via P2002 unique index violation and return existing compensation', async () => {
+      const command = makeValidReverseCommand();
+      const payload = command.payload;
+
+      const originalEntry = new LedgerEntryEntity(
+        'orig_entry_id',
+        payload.paymentId,
+        payload.merchantId,
+        payload.amount,
+        payload.currency,
+        LedgerEntryType.DEBIT,
+        'original DEBIT',
+        new Date(),
+        'orig_cmd_123',
+        command.correlationId,
+        command.causationId,
+        command.sagaId
+      );
+
+      const existingReversal = new LedgerEntryEntity(
+        'existing_rev_entry_id',
+        payload.paymentId,
+        payload.merchantId,
+        payload.amount,
+        payload.currency,
+        LedgerEntryType.CREDIT,
+        'already compensated',
+        new Date(),
+        'other_cmd_eventId',
+        command.correlationId,
+        command.causationId,
+        command.sagaId,
+        'orig_entry_id'
+      );
+
+      jest.spyOn(ledgerRepository, 'findOriginalByPaymentId').mockResolvedValue(originalEntry);
+      jest.spyOn(ledgerRepository, 'findCompensationByOriginalEntryId')
+        .mockResolvedValueOnce(null) // first check sees nothing
+        .mockResolvedValueOnce(existingReversal); // P2002 lookup finds it
+
+      const uniqueError: any = new Error('Unique constraint failed on reversalOf');
+      uniqueError.code = 'P2002';
+      jest.spyOn(ledgerRepository, 'create').mockRejectedValue(uniqueError);
+
+      const result = await ledgerService.reverseEntry(payload, command);
+
+      expect(result.success).toBe(true);
+      expect(result.reversalEntry?.id).toBe('existing_rev_entry_id');
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Concurrent ledger reversal race'),
+        expect.any(Object)
+      );
+    });
+
+    it('should re-throw non-P2002 db errors on reverseEntry', async () => {
+      const command = makeValidReverseCommand();
+      const payload = command.payload;
+
+      const originalEntry = new LedgerEntryEntity(
+        'orig_entry_id',
+        payload.paymentId,
+        payload.merchantId,
+        payload.amount,
+        payload.currency,
+        LedgerEntryType.DEBIT,
+        'original DEBIT',
+        new Date(),
+        'orig_cmd_123',
+        command.correlationId,
+        command.causationId,
+        command.sagaId
+      );
+
+      jest.spyOn(ledgerRepository, 'findOriginalByPaymentId').mockResolvedValue(originalEntry);
+      jest.spyOn(ledgerRepository, 'findCompensationByOriginalEntryId').mockResolvedValue(null);
+
+      const randomDbError = new Error('Connection timeout');
+      jest.spyOn(ledgerRepository, 'create').mockRejectedValue(randomDbError);
+
+      await expect(ledgerService.reverseEntry(payload, command)).rejects.toThrow(
         'Connection timeout'
       );
     });

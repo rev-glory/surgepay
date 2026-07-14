@@ -12,8 +12,11 @@ import { ConfigService } from '@surgepay/config';
 import {
   BALANCE_RESERVATION_FAILED,
   BALANCE_RESERVED,
+  BALANCE_REVERSED,
   RESERVE_BALANCE,
   type ReserveBalanceCommand,
+  REVERSE_BALANCE,
+  type ReverseBalanceCommand,
 } from '@surgepay/events';
 
 import { MerchantBalanceEntity } from '../entities/merchant-balance.entity';
@@ -95,6 +98,9 @@ describe('Balance Command Handling & Domain Logic Spec', () => {
             findByMerchantId: jest.fn(),
             findByMerchantIdAndCurrency: jest.fn(),
             reserveFunds: jest.fn(),
+            releaseFunds: jest.fn(),
+            findReversalByPaymentId: jest.fn(),
+            createReversal: jest.fn(),
           },
         },
         {
@@ -159,6 +165,23 @@ describe('Balance Command Handling & Domain Logic Spec', () => {
     },
   });
 
+  const makeValidReverseCommand = (): ReverseBalanceCommand => ({
+    eventId: 'cmd_rev_bal_123',
+    eventType: REVERSE_BALANCE,
+    correlationId: 'corr_xyz',
+    causationId: 'cause_abc',
+    sagaId: 'corr_xyz',
+    timestamp: new Date().toISOString(),
+    version: 1,
+    payload: {
+      paymentId: 'pay_111',
+      merchantId: 'merch_222',
+      amount: 15000,
+      currency: 'USD',
+      reason: 'Saga compensation reversal',
+    },
+  });
+
   describe('BalanceCommandConsumer handleEvent', () => {
     it('should delegate valid ReserveBalance command to BalanceService', async () => {
       const command = makeValidCommand();
@@ -209,6 +232,46 @@ describe('Balance Command Handling & Domain Logic Spec', () => {
       expect(balanceService.reserve).toHaveBeenCalledWith(command.payload, command);
       expect(mockLogger.error).toHaveBeenCalledWith(
         'ReserveBalance failed permanently',
+        expect.any(Object)
+      );
+    });
+
+    it('should delegate valid ReverseBalance command to BalanceService', async () => {
+      const command = makeValidReverseCommand();
+      jest.spyOn(balanceService, 'reverse').mockResolvedValue({
+        success: true,
+      });
+
+      await (consumer as any).handleEvent(command);
+
+      expect(balanceService.reverse).toHaveBeenCalledWith(command.payload, command);
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Processing ReverseBalance command',
+        expect.any(Object)
+      );
+    });
+
+    it('should throw MalformedEventEnvelopeException if ReverseBalance payload is invalid', async () => {
+      const command = makeValidReverseCommand();
+      command.payload.reason = undefined as any;
+
+      await expect((consumer as any).handleEvent(command)).rejects.toThrow(
+        MalformedEventEnvelopeException
+      );
+    });
+
+    it('should finish cleanly and not bubble up exception on ReverseBalance permanent failure', async () => {
+      const command = makeValidReverseCommand();
+      jest.spyOn(balanceService, 'reverse').mockResolvedValue({
+        success: false,
+        reason: 'Merchant balance not found',
+      });
+
+      await (consumer as any).handleEvent(command);
+
+      expect(balanceService.reverse).toHaveBeenCalledWith(command.payload, command);
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'ReverseBalance failed permanently',
         expect.any(Object)
       );
     });
@@ -421,6 +484,172 @@ describe('Balance Command Handling & Domain Logic Spec', () => {
       expect(resA.success).toBe(true);
       expect(resB.success).toBe(false);
       expect(resB.reason).toBe('Insufficient available balance');
+    });
+  });
+
+  describe('BalanceService Reversal & Idempotency logic', () => {
+    it('should release reserved balance, create reversal audit record, and write BALANCE_REVERSED outbox event', async () => {
+      const command = makeValidReverseCommand();
+      const payload = command.payload;
+
+      const mockBalance = new MerchantBalanceEntity(
+        'balance_uuid',
+        payload.merchantId,
+        payload.currency,
+        10000, // available
+        15000, // reserved
+        new Date()
+      );
+
+      jest.spyOn(balanceRepository, 'findReversalByPaymentId').mockResolvedValue(null);
+      jest.spyOn(balanceRepository, 'findByMerchantId').mockResolvedValue([mockBalance]);
+      jest.spyOn(balanceRepository, 'createReversal').mockResolvedValue({
+        id: 'rev_audit_id',
+        paymentId: payload.paymentId,
+        merchantId: payload.merchantId,
+        currency: payload.currency,
+        amount: payload.amount,
+        commandId: command.eventId,
+        reversedAt: new Date(),
+      });
+      jest.spyOn(balanceRepository, 'releaseFunds').mockResolvedValue(true);
+
+      const result = await balanceService.reverse(payload, command);
+
+      expect(result.success).toBe(true);
+      expect(balanceRepository.findReversalByPaymentId).toHaveBeenCalledWith(payload.paymentId, expect.any(Object));
+      expect(balanceRepository.createReversal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          paymentId: payload.paymentId,
+          amount: payload.amount,
+        }),
+        expect.any(Object)
+      );
+      expect(balanceRepository.releaseFunds).toHaveBeenCalledWith(
+        payload.merchantId,
+        payload.currency,
+        payload.amount,
+        expect.any(Object)
+      );
+      expect(outboxRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: BALANCE_REVERSED,
+          aggregateId: 'balance_uuid',
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it('should skip idempotently (return success: true) if a reversal record already exists', async () => {
+      const command = makeValidReverseCommand();
+      const payload = command.payload;
+
+      const existingReversal = {
+        id: 'rev_audit_id',
+        paymentId: payload.paymentId,
+        merchantId: payload.merchantId,
+        currency: payload.currency,
+        amount: payload.amount,
+        commandId: 'prev_cmd_id',
+        reversedAt: new Date(),
+      };
+
+      jest.spyOn(balanceRepository, 'findReversalByPaymentId').mockResolvedValue(existingReversal);
+
+      const result = await balanceService.reverse(payload, command);
+
+      expect(result.success).toBe(true);
+      expect(balanceRepository.findByMerchantId).not.toHaveBeenCalled();
+      expect(balanceRepository.releaseFunds).not.toHaveBeenCalled();
+      expect(outboxRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should handle concurrent insert race via P2002 and return success: true', async () => {
+      const command = makeValidReverseCommand();
+      const payload = command.payload;
+
+      const mockBalance = new MerchantBalanceEntity(
+        'balance_uuid',
+        payload.merchantId,
+        payload.currency,
+        10000,
+        15000,
+        new Date()
+      );
+
+      jest.spyOn(balanceRepository, 'findReversalByPaymentId').mockResolvedValue(null);
+      jest.spyOn(balanceRepository, 'findByMerchantId').mockResolvedValue([mockBalance]);
+
+      const uniqueError: any = new Error('Unique constraint failed on paymentId');
+      uniqueError.code = 'P2002';
+      jest.spyOn(balanceRepository, 'createReversal').mockRejectedValue(uniqueError);
+
+      const result = await balanceService.reverse(payload, command);
+
+      expect(result.success).toBe(true); // race recovery returns success: true
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Concurrent balance reversal race'),
+        expect.any(Object)
+      );
+    });
+
+    it('should return success: false if merchant balance projection or currency mismatches', async () => {
+      const command = makeValidReverseCommand();
+      const payload = command.payload;
+
+      // No projections
+      jest.spyOn(balanceRepository, 'findReversalByPaymentId').mockResolvedValue(null);
+      jest.spyOn(balanceRepository, 'findByMerchantId').mockResolvedValue([]);
+
+      const result = await balanceService.reverse(payload, command);
+
+      expect(result.success).toBe(false);
+      expect(result.reason).toContain('Merchant balance not found');
+      expect(balanceRepository.createReversal).not.toHaveBeenCalled();
+    });
+
+    it('should return success: false if releaseFunds fails (insufficient reserved balance)', async () => {
+      const command = makeValidReverseCommand();
+      const payload = command.payload;
+
+      const mockBalance = new MerchantBalanceEntity(
+        'balance_uuid',
+        payload.merchantId,
+        payload.currency,
+        10000,
+        5000, // reserved is 5000, but payload demands 15000
+        new Date()
+      );
+
+      jest.spyOn(balanceRepository, 'findReversalByPaymentId').mockResolvedValue(null);
+      jest.spyOn(balanceRepository, 'findByMerchantId').mockResolvedValue([mockBalance]);
+      jest.spyOn(balanceRepository, 'createReversal').mockResolvedValue({} as any);
+      jest.spyOn(balanceRepository, 'releaseFunds').mockResolvedValue(false); // fails!
+
+      const result = await balanceService.reverse(payload, command);
+
+      expect(result.success).toBe(false);
+      expect(result.reason).toContain('Insufficient reserved balance for reversal');
+      expect(outboxRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should reject invalid payload parameters in validation check', async () => {
+      const command = makeValidReverseCommand();
+      const payload = { ...command.payload, amount: -100 }; // invalid
+
+      const result = await balanceService.reverse(payload, command);
+
+      expect(result.success).toBe(false);
+      expect(result.reason).toContain('Invalid balance reversal payload');
+    });
+
+    it('should re-throw random database errors to trigger retries', async () => {
+      const command = makeValidReverseCommand();
+      const payload = command.payload;
+
+      jest.spyOn(balanceRepository, 'findReversalByPaymentId').mockRejectedValue(new Error('DB Timeout'));
+
+      await expect(balanceService.reverse(payload, command)).rejects.toThrow('DB Timeout');
     });
   });
 

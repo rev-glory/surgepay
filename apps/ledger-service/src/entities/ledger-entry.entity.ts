@@ -15,7 +15,11 @@ export class LedgerEntryEntity {
     public readonly sourceCommandId: string,
     public readonly correlationId: string,
     public readonly causationId: string,
-    public readonly sagaId: string
+    public readonly sagaId: string,
+    // Null for original entries. Non-null for compensation entries only.
+    // References the UUID of the original DEBIT entry this CREDIT entry offsets.
+    // Protected at the DB level by a partial unique index (WHERE "reversalOf" IS NOT NULL).
+    public readonly reversalOf: string | null = null
   ) {}
 
   static create(params: {
@@ -29,6 +33,7 @@ export class LedgerEntryEntity {
     correlationId: string;
     causationId: string;
     sagaId: string;
+    reversalOf?: string | null;
   }): LedgerEntryEntity {
     return new LedgerEntryEntity(
       crypto.randomUUID(),
@@ -42,7 +47,8 @@ export class LedgerEntryEntity {
       params.sourceCommandId,
       params.correlationId,
       params.causationId,
-      params.sagaId
+      params.sagaId,
+      params.reversalOf ?? null
     );
   }
 }

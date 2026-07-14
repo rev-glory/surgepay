@@ -94,6 +94,12 @@ model LedgerEntry {
   // Unique constraint to serve as business-level idempotency key
   sourceCommandId String        @unique
 
+  // For compensation entries only: the UUID of the original DEBIT entry this entry offsets.
+  // NULL for all original entries. Non-null values are protected by a partial unique index
+  // in the migration SQL (WHERE "reversalOf" IS NOT NULL), preventing two compensation
+  // entries from ever referencing the same original entry.
+  reversalOf    String?         @db.Uuid
+
   // Tracing metadata
   correlationId String
   causationId   String
@@ -104,4 +110,5 @@ model LedgerEntry {
   @@index([correlationId])
   @@index([sagaId])
   @@index([createdAt])
+  @@index([reversalOf])
 }

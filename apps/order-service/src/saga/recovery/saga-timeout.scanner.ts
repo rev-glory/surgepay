@@ -1,4 +1,5 @@
 import { Injectable, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
+
 import { LoggerService, TOPIC_REGISTRY } from '@surgepay/common';
 import { ConfigService } from '@surgepay/config';
 import {
@@ -8,6 +9,7 @@ import {
   SCHEDULE_RETRY,
   type ScheduleRetryCommand,
 } from '@surgepay/events';
+
 import { SagaStatus } from '../../generated/client';
 import { OrderOutboxEventEntity } from '../entities/order-outbox-event.entity';
 import { OrderOutboxRepository } from '../repositories/order-outbox.repository';

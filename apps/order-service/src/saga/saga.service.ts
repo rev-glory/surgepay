@@ -6,12 +6,14 @@ import { LoggerService } from '@surgepay/common';
 import {
   type BalanceReservationFailedEvent,
   type BalanceReservedEvent,
+  type BalanceReversedEvent,
   CHECK_ORDER_ELIGIBILITY,
   CHECK_PAYOUT_ELIGIBILITY,
   type EligibilityApprovedEvent,
   type EligibilityDeniedEvent,
   type LedgerEntryRecordedEvent,
   type LedgerRecordingFailedEvent,
+  type LedgerReversedEvent,
   type OrderEligibilityConfirmedEvent,
   type OrderEligibilityRejectedEvent,
   type PaymentCompletedEvent,
@@ -26,6 +28,7 @@ import {
   SagaStatus,
   SagaTransitionType,
 } from '../generated/client';
+import { CompensationCoordinator } from './compensation/compensation.coordinator';
 import { CommandDispatcher } from './dispatchers/command.dispatcher';
 import { SagaInstanceEntity } from './entities/saga-instance.entity';
 import { SagaRepository } from './repositories/saga.repository';
@@ -35,7 +38,8 @@ export class SagaService {
   constructor(
     private readonly logger: LoggerService,
     private readonly sagaRepository: SagaRepository,
-    private readonly commandDispatcher: CommandDispatcher
+    private readonly commandDispatcher: CommandDispatcher,
+    private readonly compensationCoordinator: CompensationCoordinator
   ) {
     this.logger.setContext('SagaService');
   }
@@ -496,6 +500,7 @@ export class SagaService {
 
   /**
    * Processes EligibilityDenied response event.
+   * §6.2 Scenario 1: ledger entry recorded, eligibility denied → reverse ledger.
    */
   async processEligibilityDenied(event: EligibilityDeniedEvent): Promise<void> {
     const { correlationId, sagaId, eventId, eventType } = event;
@@ -533,10 +538,13 @@ export class SagaService {
 
     await this.sagaRepository.update(saga);
 
-    this.logger.warn('Saga forward execution stopped due to payout eligibility denial', {
+    this.logger.warn('Saga forward execution stopped due to payout eligibility denial. Initiating compensation.', {
       sagaId: saga.id,
       failureReason: saga.failureReason,
     });
+
+    // Initiate compensation — §6.2 Scenario 1 (only LedgerEntryRecorded completed)
+    await this.compensationCoordinator.initiateCompensation(saga, event);
   }
 
   /**
@@ -594,6 +602,7 @@ export class SagaService {
 
   /**
    * Processes BalanceReservationFailed response event.
+   * §6.2 Scenario 2: ledger entry recorded, balance reservation permanently failed → reverse ledger.
    */
   async processBalanceReservationFailed(event: BalanceReservationFailedEvent): Promise<void> {
     const { correlationId, sagaId, eventId, eventType } = event;
@@ -631,10 +640,13 @@ export class SagaService {
 
     await this.sagaRepository.update(saga);
 
-    this.logger.warn('Saga forward execution stopped due to balance reservation failure', {
+    this.logger.warn('Saga forward execution stopped due to balance reservation failure. Initiating compensation.', {
       sagaId: saga.id,
       failureReason: saga.failureReason,
     });
+
+    // Initiate compensation — §6.2 Scenario 2 (LedgerEntryRecorded completed; balance never reserved)
+    await this.compensationCoordinator.initiateCompensation(saga, event);
   }
 
   /**
@@ -676,6 +688,11 @@ export class SagaService {
   /**
    * Processes the Saga-facing SagaStepExecutionFailed failure event.
    * Transitions Saga to step-failure, halting forward execution.
+   * Initiates compensation based on how far the forward saga progressed:
+   *   - ELIGIBILITY_PENDING → §6.2 Scenario 1
+   *   - BALANCE_PENDING     → §6.2 Scenario 2
+   *   - BALANCE_RESERVED    → §6.2 Scenario 3
+   *   - LEDGER_PENDING      → No compensation (nothing committed)
    */
   async processStepExecutionFailed(event: SagaStepExecutionFailedEvent): Promise<void> {
     const { sagaId, eventId, eventType } = event;
@@ -708,9 +725,66 @@ export class SagaService {
     saga.failStep(failureReason, 'retry-scheduler');
     await this.sagaRepository.update(saga);
 
-    this.logger.warn('Saga forward execution halted permanently due to retry scheduler exhaustion', {
+    this.logger.warn('Saga forward execution halted permanently due to retry scheduler exhaustion. Initiating compensation.', {
       sagaId: saga.id,
+      sagaStatus: saga.status,
       failureReason: saga.failureReason,
     });
+
+    // Initiate compensation — scenario determined by current saga.status
+    await this.compensationCoordinator.initiateCompensation(saga, event);
+  }
+
+  /**
+   * Processes BalanceReversed event during compensation (§6.2 Scenario 3 only).
+   * Delegates to CompensationCoordinator which validates the ack is expected,
+   * persists the BALANCE_REVERSAL_ACKNOWLEDGED checkpoint, and dispatches ReverseLedgerEntry.
+   */
+  async processBalanceReversedForCompensation(event: BalanceReversedEvent): Promise<void> {
+    const { sagaId, eventId, eventType, correlationId } = event;
+
+    this.logger.info('Processing BalanceReversed event for saga compensation', {
+      eventId,
+      eventType,
+      sagaId,
+      correlationId,
+    });
+
+    const saga = await this.sagaRepository.findById(sagaId);
+    if (!saga) {
+      this.logger.warn('SagaInstance not found for BalanceReversed event. Skipping.', {
+        sagaId,
+        eventId,
+      });
+      return;
+    }
+
+    await this.compensationCoordinator.handleBalanceReversedAck(saga, event);
+  }
+
+  /**
+   * Processes LedgerReversed event during compensation (§6.2 Scenarios 1, 2, and 3).
+   * Delegates to CompensationCoordinator which transitions the saga to REVERSED → CLOSED.
+   */
+  async processLedgerReversed(event: LedgerReversedEvent): Promise<void> {
+    const { sagaId, eventId, eventType, correlationId } = event;
+
+    this.logger.info('Processing LedgerReversed event for saga compensation', {
+      eventId,
+      eventType,
+      sagaId,
+      correlationId,
+    });
+
+    const saga = await this.sagaRepository.findById(sagaId);
+    if (!saga) {
+      this.logger.warn('SagaInstance not found for LedgerReversed event. Skipping.', {
+        sagaId,
+        eventId,
+      });
+      return;
+    }
+
+    await this.compensationCoordinator.handleLedgerReversedAck(saga, event);
   }
 }
