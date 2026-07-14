@@ -11,6 +11,7 @@ import kafkaConfig from './configs/kafka.config';
 import loggingConfig from './configs/logging.config';
 import outboxConfig from './configs/outbox.config';
 import redisConfig from './configs/redis.config';
+import sagaConfig from './configs/saga.config';
 import securityConfig from './configs/security.config';
 import servicesConfig from './configs/services.config';
 import telemetryConfig from './configs/telemetry.config';
@@ -54,6 +55,7 @@ function getEnvFilePath(): string {
         securityConfig,
         servicesConfig,
         outboxConfig,
+        sagaConfig,
       ],
       validate,
     }),

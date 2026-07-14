@@ -48,3 +48,9 @@ export const RETRY_EXHAUSTED = 'RetryExhausted';
 export const MESSAGE_MOVED_TO_DLQ = 'MessageMovedToDLQ';
 export const REPLAY_REQUESTED = 'ReplayRequested';
 export const REPLAY_COMPLETED = 'ReplayCompleted';
+
+// Saga Command Retries & Outcomes
+export const SCHEDULE_RETRY = 'ScheduleRetry';
+export const SAGA_RETRY_REGISTERED = 'SagaRetryRegistered';
+export const SAGA_STEP_EXECUTION_FAILED = 'SagaStepExecutionFailed';
+

@@ -17,6 +17,8 @@ import {
   type PaymentCompletedEvent,
   RECORD_LEDGER_ENTRY,
   RESERVE_BALANCE,
+  type SagaRetryRegisteredEvent,
+  type SagaStepExecutionFailedEvent,
 } from '@surgepay/events';
 
 import {
@@ -68,6 +70,8 @@ export class SagaService {
       return;
     }
 
+    const ledgerCommandId = randomUUID();
+
     // Create SagaInstance aggregate root. Saga ID (id) adopts correlationId as per doc-v3 Section 8.4
     const saga = SagaInstanceEntity.create({
       paymentId,
@@ -75,6 +79,7 @@ export class SagaService {
       merchantId,
       amount,
       currency,
+      initialCommandId: ledgerCommandId,
     });
 
     // Persist new saga instance to the database
@@ -143,7 +148,7 @@ export class SagaService {
 
     // Dispatch RecordLedgerEntry command
     await this.commandDispatcher.dispatch({
-      eventId: randomUUID(),
+      eventId: ledgerCommandId,
       eventType: RECORD_LEDGER_ENTRY,
       correlationId,
       causationId: event.eventId,
@@ -319,9 +324,11 @@ export class SagaService {
       );
     }
 
+    const eligibilityCommandId = randomUUID();
     const oldStatus = saga.status;
     saga.transitionTo(SagaStatus.LEDGER_RECORDED);
     saga.transitionTo(SagaStatus.ELIGIBILITY_PENDING);
+    saga.resetRetryMetadata(eligibilityCommandId);
 
     await this.sagaRepository.update(saga, [
       {
@@ -348,7 +355,7 @@ export class SagaService {
     });
 
     await this.commandDispatcher.dispatch({
-      eventId: randomUUID(),
+      eventId: eligibilityCommandId,
       eventType: CHECK_PAYOUT_ELIGIBILITY,
       correlationId: saga.correlationId,
       causationId: eventId,
@@ -449,8 +456,10 @@ export class SagaService {
       return;
     }
 
+    const balanceCommandId = randomUUID();
     const oldStatus = saga.status;
     saga.transitionTo(SagaStatus.BALANCE_PENDING);
+    saga.resetRetryMetadata(balanceCommandId);
 
     await this.sagaRepository.update(saga, [
       {
@@ -469,7 +478,7 @@ export class SagaService {
     });
 
     await this.commandDispatcher.dispatch({
-      eventId: randomUUID(),
+      eventId: balanceCommandId,
       eventType: RESERVE_BALANCE,
       correlationId: saga.correlationId,
       causationId: eventId,
@@ -564,6 +573,7 @@ export class SagaService {
 
     const oldStatus = saga.status;
     saga.transitionTo(SagaStatus.BALANCE_RESERVED);
+    saga.resetRetryMetadata(null);
 
     await this.sagaRepository.update(saga, [
       {
@@ -622,6 +632,83 @@ export class SagaService {
     await this.sagaRepository.update(saga);
 
     this.logger.warn('Saga forward execution stopped due to balance reservation failure', {
+      sagaId: saga.id,
+      failureReason: saga.failureReason,
+    });
+  }
+
+  /**
+   * Processes the Saga-facing SagaRetryRegistered outcome event.
+   * Clears handoff lock and updates observed retry metadata.
+   */
+  async processRetryRegistered(event: SagaRetryRegisteredEvent): Promise<void> {
+    const { sagaId, eventId, eventType } = event;
+    const { originalEventId, attempt, nextExecutionTime } = event.payload;
+
+    this.logger.info('Processing SagaRetryRegistered event', {
+      eventId,
+      eventType,
+      sagaId,
+      originalEventId,
+      attempt,
+      nextExecutionTime,
+    });
+
+    const saga = await this.sagaRepository.findById(sagaId);
+    if (!saga) {
+      this.logger.warn('SagaInstance not found for SagaRetryRegistered event', {
+        sagaId,
+        originalEventId,
+      });
+      return;
+    }
+
+    saga.registerRetry(attempt, new Date(nextExecutionTime));
+    await this.sagaRepository.update(saga);
+
+    this.logger.info('Saga retry execution successfully registered', {
+      sagaId: saga.id,
+      retryCount: saga.retryCount,
+      nextRetryAt: saga.nextRetryAt?.toISOString(),
+    });
+  }
+
+  /**
+   * Processes the Saga-facing SagaStepExecutionFailed failure event.
+   * Transitions Saga to step-failure, halting forward execution.
+   */
+  async processStepExecutionFailed(event: SagaStepExecutionFailedEvent): Promise<void> {
+    const { sagaId, eventId, eventType } = event;
+    const { originalEventId, failureReason } = event.payload;
+
+    this.logger.info('Processing SagaStepExecutionFailed event', {
+      eventId,
+      eventType,
+      sagaId,
+      originalEventId,
+      failureReason,
+    });
+
+    const saga = await this.sagaRepository.findById(sagaId);
+    if (!saga) {
+      this.logger.warn('SagaInstance not found for SagaStepExecutionFailed event', {
+        sagaId,
+        originalEventId,
+      });
+      return;
+    }
+
+    if (saga.failureReason !== null) {
+      this.logger.info('Saga already has failure metadata set. Safe skip.', {
+        sagaId: saga.id,
+      });
+      return;
+    }
+
+    saga.failStep(failureReason, 'retry-scheduler');
+    await this.sagaRepository.update(saga);
+
+    this.logger.warn('Saga forward execution halted permanently due to retry scheduler exhaustion', {
       sagaId: saga.id,
       failureReason: saga.failureReason,
     });

@@ -8,6 +8,7 @@ import {
   LoggingConfig,
   OutboxConfig,
   RedisConfig,
+  SagaConfig,
   SecurityConfig,
   ServicesConfig,
   TelemetryConfig,
@@ -51,5 +52,9 @@ export class ConfigService {
 
   get outbox(): OutboxConfig {
     return this.nestConfigService.getOrThrow<OutboxConfig>('outbox');
+  }
+
+  get saga(): SagaConfig {
+    return this.nestConfigService.getOrThrow<SagaConfig>('saga');
   }
 }

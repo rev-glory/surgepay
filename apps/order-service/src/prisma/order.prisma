@@ -99,6 +99,13 @@ model SagaInstance {
   failedAt              DateTime?             @db.Timestamptz(6)
   originService         String?
 
+  stateUpdatedAt        DateTime              @default(now()) @db.Timestamptz(6)
+  retryCount            Int                   @default(0)
+  lastRetryAt           DateTime?             @db.Timestamptz(6)
+  nextRetryAt           DateTime?             @db.Timestamptz(6)
+  currentCommandId      String?
+  retryHandoffAt        DateTime?             @db.Timestamptz(6)
+
   startedAt             DateTime              @default(now()) @db.Timestamptz(6)
   completedAt           DateTime?             @db.Timestamptz(6)
   createdAt             DateTime              @default(now()) @db.Timestamptz(6)
@@ -106,6 +113,8 @@ model SagaInstance {
 
   @@index([status])
   @@index([correlationId])
+  @@index([nextRetryAt])
+  @@index([retryHandoffAt])
 }
 
 enum SagaTransitionType {
@@ -128,3 +137,23 @@ model SagaTransition {
   @@index([sagaId])
   @@index([correlationId])
 }
+
+enum OutboxStatus {
+  PENDING
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  RETRYING
+}
+
+model OrderOutboxEvent {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventType     String
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  createdAt     DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime     @updatedAt @db.Timestamptz(6)
+
+  @@index([status])
+}
+

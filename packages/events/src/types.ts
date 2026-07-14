@@ -369,3 +369,38 @@ export interface ReplayCompletedPayload {
 export type ReplayCompletedEvent = BaseEventEnvelope<ReplayCompletedPayload> & {
   eventType: typeof constants.REPLAY_COMPLETED;
 };
+
+export interface ScheduleRetryPayload {
+  originalTopic: string;
+  originalEvent: BaseEventEnvelope<unknown>;
+  retryCount: number;
+  maxAttempts: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+}
+export type ScheduleRetryCommand = BaseEventEnvelope<ScheduleRetryPayload> & {
+  eventType: typeof constants.SCHEDULE_RETRY;
+};
+
+export interface SagaRetryRegisteredPayload {
+  sagaId: string;
+  originalEventId: string;
+  attempt: number;
+  nextExecutionTime: string;
+}
+export type SagaRetryRegisteredEvent = BaseEventEnvelope<SagaRetryRegisteredPayload> & {
+  eventType: typeof constants.SAGA_RETRY_REGISTERED;
+};
+
+export interface SagaStepExecutionFailedPayload {
+  sagaId: string;
+  originalEventId: string;
+  originalTopic: string;
+  attempts: number;
+  failureReason: string;
+  failedAt: string;
+}
+export type SagaStepExecutionFailedEvent = BaseEventEnvelope<SagaStepExecutionFailedPayload> & {
+  eventType: typeof constants.SAGA_STEP_EXECUTION_FAILED;
+};
+

@@ -12,6 +12,10 @@ import { SagaPaymentCompletedConsumer } from './handlers/payment-completed.handl
 import { SagaRiskEventsConsumer } from './handlers/risk-events.handler';
 import { SagaRepository } from './repositories/saga.repository';
 import { SagaService } from './saga.service';
+import { OrderOutboxRepository } from './repositories/order-outbox.repository';
+import { OrderOutboxRelay } from './recovery/order-outbox.relay';
+import { SagaTimeoutScanner } from './recovery/saga-timeout.scanner';
+import { RetryEventsConsumer } from './recovery/retry-events.consumer';
 
 @Module({
   imports: [ConfigModule, LoggerModule, MetricsModule],
@@ -22,7 +26,11 @@ import { SagaService } from './saga.service';
     SagaLedgerEventsConsumer,
     SagaRiskEventsConsumer,
     SagaBalanceEventsConsumer,
+    RetryEventsConsumer,
     OrderInboxRepository,
+    OrderOutboxRepository,
+    OrderOutboxRelay,
+    SagaTimeoutScanner,
     KafkaEventProducer,
     SagaRepository,
     CommandDispatcher,
@@ -34,7 +42,9 @@ import { SagaService } from './saga.service';
     SagaLedgerEventsConsumer,
     SagaRiskEventsConsumer,
     SagaBalanceEventsConsumer,
+    RetryEventsConsumer,
     SagaRepository,
+    OrderOutboxRepository,
     CommandDispatcher,
   ],
 })

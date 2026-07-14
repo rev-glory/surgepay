@@ -1,0 +1,70 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+enum RetryStatus {
+  PENDING
+  EXECUTED
+  EXHAUSTED
+}
+
+enum InboxStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+  RETRYING
+  DLQ_SENT
+}
+
+model InboxEvent {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId       String
+  consumer      String
+  status        InboxStatus @default(RECEIVED)
+  payload       Json
+  receivedAt    DateTime    @default(now()) @db.Timestamptz(6)
+  processedAt   DateTime?   @db.Timestamptz(6)
+  retryCount    Int         @default(0)
+
+  // Envelope metadata stored as first-class columns
+  eventType     String
+  correlationId String
+  causationId   String
+  sagaId        String
+  timestamp     DateTime    @db.Timestamptz(6)
+  version       Int
+
+  @@unique([consumer, eventId])
+  @@index([eventId])
+  @@index([status])
+  @@index([correlationId])
+  @@index([sagaId])
+  @@index([receivedAt])
+}
+
+model ScheduledRetry {
+  id                String      @id
+  originalTopic     String
+  originalMessage   Json
+  retryCount        Int
+  maxAttempts       Int
+  baseDelayMs       Int
+  maxDelayMs        Int
+  correlationId     String
+  causationId       String
+  sagaId            String?
+  executeAt         DateTime    @db.Timestamptz(6)
+  status            RetryStatus @default(PENDING)
+  createdAt         DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime    @updatedAt @db.Timestamptz(6)
+
+  @@index([executeAt])
+  @@index([status])
+}

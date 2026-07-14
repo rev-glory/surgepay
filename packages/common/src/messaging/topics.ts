@@ -17,6 +17,9 @@ import {
   BALANCE_RESERVATION_FAILED,
   ELIGIBILITY_APPROVED,
   ELIGIBILITY_DENIED,
+  SCHEDULE_RETRY,
+  SAGA_RETRY_REGISTERED,
+  SAGA_STEP_EXECUTION_FAILED,
 } from '@surgepay/events';
 
 export const TOPIC_REGISTRY: Record<string, string> = {
@@ -41,6 +44,9 @@ export const TOPIC_REGISTRY: Record<string, string> = {
   [BALANCE_RESERVATION_FAILED]: 'balance.events',
   [ELIGIBILITY_APPROVED]: 'risk.events',
   [ELIGIBILITY_DENIED]: 'risk.events',
+  [SCHEDULE_RETRY]: 'retry.commands',
+  [SAGA_RETRY_REGISTERED]: 'retry.events',
+  [SAGA_STEP_EXECUTION_FAILED]: 'retry.events',
   'payments.dlq': 'payments.dlq',
 };
 

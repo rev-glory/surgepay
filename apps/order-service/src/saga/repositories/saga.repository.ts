@@ -30,7 +30,13 @@ export class SagaRepository {
       model.updatedAt,
       model.failureReason,
       model.failedAt,
-      model.originService
+      model.originService,
+      model.stateUpdatedAt,
+      model.retryCount,
+      model.lastRetryAt,
+      model.nextRetryAt,
+      model.currentCommandId,
+      model.retryHandoffAt
     );
   }
 
@@ -65,6 +71,12 @@ export class SagaRepository {
           failureReason: entity.failureReason,
           failedAt: entity.failedAt,
           originService: entity.originService,
+          stateUpdatedAt: entity.stateUpdatedAt,
+          retryCount: entity.retryCount,
+          lastRetryAt: entity.lastRetryAt,
+          nextRetryAt: entity.nextRetryAt,
+          currentCommandId: entity.currentCommandId,
+          retryHandoffAt: entity.retryHandoffAt,
         },
       });
 
@@ -163,6 +175,12 @@ export class SagaRepository {
           failureReason: entity.failureReason,
           failedAt: entity.failedAt,
           originService: entity.originService,
+          stateUpdatedAt: entity.stateUpdatedAt,
+          retryCount: entity.retryCount,
+          lastRetryAt: entity.lastRetryAt,
+          nextRetryAt: entity.nextRetryAt,
+          currentCommandId: entity.currentCommandId,
+          retryHandoffAt: entity.retryHandoffAt,
         },
       });
 
@@ -205,6 +223,66 @@ export class SagaRepository {
         createdAt: 'asc',
       },
     });
+    return models.map((model) => this.mapToEntity(model));
+  }
+
+  /**
+   * Find stalled Sagas that are eligible for timeout retry.
+   * Implements strict predicates separating initial timeout from retry scheduler timings.
+   */
+  async findStalledSagas(
+    now: Date,
+    batchSize: number,
+    stepTimeoutMs: number,
+    handoffTimeoutMs: number
+  ): Promise<SagaInstanceEntity[]> {
+    const initialCutoff = new Date(now.getTime() - stepTimeoutMs);
+    const retryCutoff = new Date(now.getTime() - stepTimeoutMs);
+    const handoffCutoff = new Date(now.getTime() - handoffTimeoutMs);
+
+    const models = await this.prisma.client.sagaInstance.findMany({
+      where: {
+        status: {
+          in: [
+            SagaStatus.LEDGER_PENDING,
+            SagaStatus.ELIGIBILITY_PENDING,
+            SagaStatus.BALANCE_PENDING,
+          ],
+        },
+        orderValidationStatus: {
+          not: OrderValidationStatus.REJECTED,
+        },
+        failureReason: null,
+        OR: [
+          {
+            retryHandoffAt: null,
+            nextRetryAt: null,
+            retryCount: 0,
+            stateUpdatedAt: {
+              lte: initialCutoff,
+            },
+          },
+          {
+            retryHandoffAt: null,
+            nextRetryAt: {
+              not: null,
+              lte: retryCutoff,
+            },
+          },
+          {
+            retryHandoffAt: {
+              not: null,
+              lte: handoffCutoff,
+            },
+          },
+        ],
+      },
+      take: batchSize,
+      orderBy: {
+        stateUpdatedAt: 'asc',
+      },
+    });
+
     return models.map((model) => this.mapToEntity(model));
   }
 }

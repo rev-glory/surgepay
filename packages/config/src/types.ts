@@ -76,3 +76,14 @@ export interface OutboxConfig {
   maxInFlightMessages: number;
   flushInterval: number;
 }
+
+export interface SagaConfig {
+  scanIntervalMs: number;
+  stepTimeoutMs: number;
+  retryBaseDelayMs: number;
+  retryMaxDelayMs: number;
+  maxRetryAttempts: number;
+  batchSize: number;
+  handoffTimeoutMs: number;
+}
+

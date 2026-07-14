@@ -105,6 +105,12 @@ describe('SagaRepository', () => {
           failureReason: entity.failureReason,
           failedAt: entity.failedAt,
           originService: entity.originService,
+          stateUpdatedAt: entity.stateUpdatedAt,
+          retryCount: entity.retryCount,
+          lastRetryAt: entity.lastRetryAt,
+          nextRetryAt: entity.nextRetryAt,
+          currentCommandId: entity.currentCommandId,
+          retryHandoffAt: entity.retryHandoffAt,
         },
       });
       expect(result.id).toBe(entity.id);
@@ -287,6 +293,12 @@ describe('SagaRepository', () => {
           failureReason: null,
           failedAt: null,
           originService: null,
+          stateUpdatedAt: entity.stateUpdatedAt,
+          retryCount: entity.retryCount,
+          lastRetryAt: entity.lastRetryAt,
+          nextRetryAt: entity.nextRetryAt,
+          currentCommandId: entity.currentCommandId,
+          retryHandoffAt: entity.retryHandoffAt,
         },
       });
       expect(prismaMock.client.sagaTransition.create).toHaveBeenCalledWith({

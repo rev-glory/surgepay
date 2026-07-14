@@ -17,7 +17,13 @@ export class SagaInstanceEntity {
     public readonly updatedAt: Date,
     public failureReason: string | null = null,
     public failedAt: Date | null = null,
-    public originService: string | null = null
+    public originService: string | null = null,
+    public stateUpdatedAt: Date = new Date(),
+    public retryCount: number = 0,
+    public lastRetryAt: Date | null = null,
+    public nextRetryAt: Date | null = null,
+    public currentCommandId: string | null = null,
+    public retryHandoffAt: Date | null = null
   ) {
     if (id !== correlationId) {
       throw new Error(
@@ -36,7 +42,9 @@ export class SagaInstanceEntity {
     merchantId: string;
     amount: number;
     currency: string;
+    initialCommandId?: string;
   }): SagaInstanceEntity {
+    const now = new Date();
     return new SagaInstanceEntity(
       params.correlationId, // id adopts correlationId value
       params.paymentId,
@@ -47,13 +55,19 @@ export class SagaInstanceEntity {
       params.amount,
       params.currency,
       0, // version starts at 0
-      new Date(),
+      now,
       null, // completedAt is populated only when CLOSED
-      new Date(),
-      new Date(),
+      now,
+      now,
       null,
       null,
-      null
+      null,
+      now, // stateUpdatedAt
+      0,   // retryCount
+      null, // lastRetryAt
+      null, // nextRetryAt
+      params.initialCommandId || null, // currentCommandId
+      null  // retryHandoffAt
     );
   }
 
@@ -115,6 +129,51 @@ export class SagaInstanceEntity {
   }
 
   /**
+   * Starts a retry handoff to the Retry Scheduler.
+   * Atomic marker to prevent scanner races.
+   */
+  startHandoff(): void {
+    if (this.isTerminal() || !this.canProceedForward()) {
+      throw new Error('Cannot start retry handoff on a terminal or failed saga.');
+    }
+    this.retryHandoffAt = new Date();
+  }
+
+  /**
+   * Registers a scheduled retry from the Retry Scheduler.
+   * Clears handoff status and syncs timer details.
+   */
+  registerRetry(attempt: number, nextExecutionTime: Date): void {
+    this.retryHandoffAt = null;
+    this.retryCount = attempt;
+    this.nextRetryAt = nextExecutionTime;
+    this.lastRetryAt = new Date();
+  }
+
+  /**
+   * Transition the saga to a step-failure state upon retry exhaustion.
+   * Clears handoff status and timing metadata.
+   */
+  failStep(reason: string, service: string): void {
+    this.retryHandoffAt = null;
+    this.nextRetryAt = null;
+    this.failureReason = reason;
+    this.failedAt = new Date();
+    this.originService = service;
+  }
+
+  /**
+   * Reset retry metadata when a business step successfully advances.
+   */
+  resetRetryMetadata(nextCommandId: string | null = null): void {
+    this.retryCount = 0;
+    this.nextRetryAt = null;
+    this.retryHandoffAt = null;
+    this.lastRetryAt = null;
+    this.currentCommandId = nextCommandId;
+  }
+
+  /**
    * Encapsulates state machine transitions.
    * Rejects invalid transitions and updates completedAt when transitioning to CLOSED.
    */
@@ -154,6 +213,7 @@ export class SagaInstanceEntity {
     }
 
     this.status = nextState;
+    this.stateUpdatedAt = new Date();
 
     if (nextState === SagaStatus.CLOSED) {
       this.completedAt = new Date();
