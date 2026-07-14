@@ -5,6 +5,7 @@ import { ConfigModule } from '@surgepay/config';
 
 import { OrderModule } from './modules/order.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { SagaModule } from './saga/saga.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { PrismaModule } from './prisma/prisma.module';
     HealthModule,
     PrismaModule,
     OrderModule,
+    SagaModule,
   ],
 })
 export class AppModule {}
