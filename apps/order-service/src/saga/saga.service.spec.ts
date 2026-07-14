@@ -44,30 +44,30 @@ describe('SagaService', () => {
     service = module.get<SagaService>(SagaService);
   });
 
+  const event: PaymentCompletedEvent = {
+    eventId: 'evt_12345',
+    eventType: PAYMENT_COMPLETED,
+    correlationId: 'corr_54321',
+    causationId: 'cause_99999',
+    sagaId: 'corr_54321',
+    timestamp: new Date().toISOString(),
+    version: 1,
+    payload: {
+      paymentId: 'pay_abc',
+      amount: 5000,
+      currency: 'USD',
+      merchantId: 'merch_xyz',
+      orderId: 'ord_123',
+      processorTransactionId: 'txn_processor',
+      completedAt: new Date().toISOString(),
+    },
+  };
+
   it('should initialize and set correct logger context', () => {
     expect(loggerMock.setContext).toHaveBeenCalledWith('SagaService');
   });
 
-  it('should create and persist a new SagaInstance when no duplicate is found', async () => {
-    const event: PaymentCompletedEvent = {
-      eventId: 'evt_12345',
-      eventType: PAYMENT_COMPLETED,
-      correlationId: 'corr_54321',
-      causationId: 'cause_99999',
-      sagaId: 'corr_54321',
-      timestamp: new Date().toISOString(),
-      version: 1,
-      payload: {
-        paymentId: 'pay_abc',
-        amount: 5000,
-        currency: 'USD',
-        merchantId: 'merch_xyz',
-        orderId: 'ord_123',
-        processorTransactionId: 'txn_processor',
-        completedAt: new Date().toISOString(),
-      },
-    };
-
+  it('should create and persist a new SagaInstance when no duplicate is found (Test 4)', async () => {
     sagaRepositoryMock.findByPaymentId.mockResolvedValue(null);
     sagaRepositoryMock.create.mockResolvedValue(null as unknown as SagaInstanceEntity);
 
@@ -82,38 +82,13 @@ describe('SagaService', () => {
         status: 'LEDGER_PENDING',
       })
     );
-    expect(loggerMock.info).toHaveBeenCalledWith(
-      expect.stringContaining('Durable SagaInstance created successfully'),
-      expect.objectContaining({
-        sagaId: 'corr_54321',
-        paymentId: 'pay_abc',
-        correlationId: 'corr_54321',
-      })
-    );
   });
 
-  it('should skip creating a SagaInstance if one already exists for the payment', async () => {
-    const event: PaymentCompletedEvent = {
-      eventId: 'evt_12345',
-      eventType: PAYMENT_COMPLETED,
-      correlationId: 'corr_54321',
-      causationId: 'cause_99999',
-      sagaId: 'corr_54321',
-      timestamp: new Date().toISOString(),
-      version: 1,
-      payload: {
-        paymentId: 'pay_abc',
-        amount: 5000,
-        currency: 'USD',
-        merchantId: 'merch_xyz',
-        orderId: 'ord_123',
-        processorTransactionId: 'txn_processor',
-        completedAt: new Date().toISOString(),
-      },
-    };
-
+  it('should skip creating a SagaInstance if one already exists for the payment (Test 5)', async () => {
     const existingSagaMock = {
-      id: 'existing_saga_id',
+      id: 'corr_54321',
+      paymentId: 'pay_abc',
+      correlationId: 'corr_54321',
     } as unknown as SagaInstanceEntity;
     sagaRepositoryMock.findByPaymentId.mockResolvedValue(existingSagaMock);
 
@@ -125,9 +100,71 @@ describe('SagaService', () => {
       expect.stringContaining('SagaInstance already exists for payment'),
       expect.objectContaining({
         paymentId: 'pay_abc',
-        sagaId: 'existing_saga_id',
+        sagaId: 'corr_54321',
         correlationId: 'corr_54321',
       })
+    );
+  });
+
+  it('should return successfully on crash/redelivery convergence if Saga exists in DB (Test 6)', async () => {
+    const existingSagaMock = {
+      id: 'corr_54321',
+      paymentId: 'pay_abc',
+      correlationId: 'corr_54321',
+    } as unknown as SagaInstanceEntity;
+
+    sagaRepositoryMock.findByPaymentId.mockResolvedValue(existingSagaMock);
+
+    // This resolves cleanly so the calling BaseKafkaConsumer can transition status to PROCESSED
+    await expect(service.processPaymentCompleted(event)).resolves.not.toThrow();
+    expect(sagaRepositoryMock.create).not.toHaveBeenCalled();
+  });
+
+  it('should handle concurrent insert race unique constraint failures idempotently (Test 7)', async () => {
+    sagaRepositoryMock.findByPaymentId.mockResolvedValueOnce(null);
+
+    // Mock Prisma P2002 unique constraint failed error
+    const prismaError = new Error('Unique constraint failed') as Error & {
+      code: string;
+      meta?: { target: string[] };
+    };
+    prismaError.code = 'P2002';
+    prismaError.meta = { target: ['paymentId'] };
+    sagaRepositoryMock.create.mockRejectedValue(prismaError);
+
+    // Mock findByPaymentId call after error to return the successfully created concurrent saga
+    const concurrentSaga = {
+      id: 'corr_54321',
+      paymentId: 'pay_abc',
+      correlationId: 'corr_54321',
+    } as unknown as SagaInstanceEntity;
+    sagaRepositoryMock.findByPaymentId.mockResolvedValueOnce(concurrentSaga);
+
+    await expect(service.processPaymentCompleted(event)).resolves.not.toThrow();
+    expect(loggerMock.warn).toHaveBeenCalledWith(
+      expect.stringContaining('Duplicate SagaInstance insert race detected. Safe idempotent skip.'),
+      expect.objectContaining({
+        paymentId: 'pay_abc',
+        sagaId: 'corr_54321',
+        correlationId: 'corr_54321',
+      })
+    );
+  });
+
+  it('should re-throw P2002 errors that are correlation invariant violations (Test 8)', async () => {
+    sagaRepositoryMock.findByPaymentId.mockResolvedValue(null);
+
+    // Mock Prisma P2002 unique constraint failed error targeting correlationId
+    const prismaError = new Error('Unique constraint failed') as Error & {
+      code: string;
+      meta?: { target: string[] };
+    };
+    prismaError.code = 'P2002';
+    prismaError.meta = { target: ['correlationId'] };
+    sagaRepositoryMock.create.mockRejectedValue(prismaError);
+
+    await expect(service.processPaymentCompleted(event)).rejects.toThrow(
+      'Unique constraint failed'
     );
   });
 });

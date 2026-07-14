@@ -52,7 +52,28 @@ export class SagaService {
     });
 
     // Persist new saga instance to the database
-    await this.sagaRepository.create(saga);
+    try {
+      await this.sagaRepository.create(saga);
+    } catch (err: unknown) {
+      const error = err as { code?: string; meta?: { target?: string[] } };
+      if (error && error.code === 'P2002') {
+        const targets = error.meta?.target || [];
+        if (targets.includes('paymentId')) {
+          // Double-check the existing record to confirm it matches the same payment workflow
+          const collidedSaga = await this.sagaRepository.findByPaymentId(paymentId);
+          if (collidedSaga && collidedSaga.correlationId === correlationId) {
+            this.logger.warn('Duplicate SagaInstance insert race detected. Safe idempotent skip.', {
+              paymentId: collidedSaga.paymentId,
+              sagaId: collidedSaga.id,
+              correlationId,
+            });
+            return;
+          }
+        }
+      }
+      // Re-throw if it is an unexpected collision or database error
+      throw err;
+    }
 
     this.logger.info('Durable SagaInstance created successfully in LEDGER_PENDING state', {
       sagaId: saga.id,
