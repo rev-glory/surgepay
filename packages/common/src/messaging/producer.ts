@@ -1,5 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import {
+  type Context,
   context,
   propagation,
   type Span,
@@ -192,7 +193,7 @@ export class KafkaEventProducer implements EventProducer, OnModuleInit, OnModule
         headers: Record<string, string | Buffer>;
       };
       span?: Span;
-      activeContext: any;
+      activeContext: Context;
     }[] = [];
 
     const tracer = trace.getTracer('surgepay-messaging');
@@ -261,7 +262,14 @@ export class KafkaEventProducer implements EventProducer, OnModuleInit, OnModule
     }
 
     // Group messages by topic
-    const messagesByTopic: Record<string, any[]> = {};
+    const messagesByTopic: Record<
+      string,
+      {
+        key: string;
+        value: string | Buffer;
+        headers: Record<string, string | Buffer>;
+      }[]
+    > = {};
     for (const msg of preparedMessages) {
       if (!messagesByTopic[msg.topic]) {
         messagesByTopic[msg.topic] = [];

@@ -188,7 +188,7 @@ export class KafkaOutboxPublisher implements EventPublisher {
 
       return metadataList.map((meta) => {
         const originalEvent = events.find((e) => {
-          const envelope = e.payload as any;
+          const envelope = e.payload as Record<string, unknown>;
           return envelope && envelope.eventId === meta.eventId;
         });
         return {

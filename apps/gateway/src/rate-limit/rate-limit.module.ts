@@ -35,7 +35,7 @@ export class RateLimitModule implements OnModuleDestroy {
       if (this.redis.status !== 'end') {
         await this.redis.quit();
       }
-    } catch (e) {
+    } catch (_e) {
       // Already closed or failed
     }
   }

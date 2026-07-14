@@ -107,8 +107,8 @@ export class OutboxRelayService implements OnApplicationShutdown {
       this.metricsService.setOutboxInFlight(serviceName, this.activeInFlight);
       this.metricsService.recordOutboxBatchSize(serviceName, events.length);
 
-      const promiseContainer = { promise: undefined as any };
-      const runPublish = async () => {
+      const promiseContainer: { promise: Promise<void> | undefined } = { promise: undefined };
+      const runPublish = async (): Promise<void> => {
         try {
           const metadataList = await this.publisher.publishBatch(events);
 
@@ -141,7 +141,7 @@ export class OutboxRelayService implements OnApplicationShutdown {
           this.activeInFlight -= events.length;
           this.metricsService.setOutboxInFlight(serviceName, this.activeInFlight);
           this.metricsService.recordOutboxCycleDuration(serviceName, Date.now() - startTime);
-          this.activePromises.delete(promiseContainer.promise);
+          this.activePromises.delete(promiseContainer.promise!);
         }
       };
 

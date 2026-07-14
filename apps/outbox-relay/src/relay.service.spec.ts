@@ -156,7 +156,7 @@ describe('OutboxRelayService', () => {
 
   it('respects maxInFlightMessages back-pressure cap', async () => {
     // Set max in-flight to 1, and simulate 1 active in-flight batch
-    (relayService as any).activeInFlight = 1;
+    relayService['activeInFlight'] = 1;
     config.outbox.maxInFlightMessages = 1;
 
     await relayService.processBatch();
