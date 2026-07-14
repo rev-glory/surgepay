@@ -13,5 +13,3 @@ export * from './time';
 export * from './uuid';
 export * from './validation/app-validation.pipe';
 export * from './validation/dto';
-
-

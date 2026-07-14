@@ -1,6 +1,7 @@
 import type { BaseEventEnvelope } from '@surgepay/events';
 
-export type InboxStatus = 'RECEIVED' | 'PROCESSING' | 'PROCESSED' | 'FAILED' | 'RETRYING' | 'DLQ_SENT';
+export type InboxStatus =
+  'RECEIVED' | 'PROCESSING' | 'PROCESSED' | 'FAILED' | 'RETRYING' | 'DLQ_SENT';
 
 export interface InboxEvent {
   id: string;
@@ -85,10 +86,7 @@ export abstract class BaseInboxRepository {
     return model as InboxEvent;
   }
 
-  async findByEventIdAndConsumer(
-    eventId: string,
-    consumer: string,
-  ): Promise<InboxEvent | null> {
+  async findByEventIdAndConsumer(eventId: string, consumer: string): Promise<InboxEvent | null> {
     const model = await this.prismaClient.inboxEvent.findUnique({
       where: {
         consumer_eventId: {

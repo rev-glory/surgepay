@@ -5,7 +5,10 @@ export const SUPPORTED_EVENT_VERSIONS = [1] as const;
 
 // Base exception for serialization failures (for backwards compatibility)
 export class SerializationException extends Error {
-  constructor(message: string, public readonly originalError?: unknown) {
+  constructor(
+    message: string,
+    public readonly originalError?: unknown,
+  ) {
     super(message);
     this.name = 'SerializationException';
   }
@@ -20,14 +23,20 @@ export class MalformedEventEnvelopeException extends SerializationException {
 }
 
 export class UnsupportedEventVersionException extends SerializationException {
-  constructor(message: string, public readonly version?: number) {
+  constructor(
+    message: string,
+    public readonly version?: number,
+  ) {
     super(message);
     this.name = 'UnsupportedEventVersionException';
   }
 }
 
 export class EventDeserializationException extends Error {
-  constructor(message: string, public readonly originalError?: unknown) {
+  constructor(
+    message: string,
+    public readonly originalError?: unknown,
+  ) {
     super(message);
     this.name = 'EventDeserializationException';
   }
@@ -76,7 +85,9 @@ export class VersionUpgradeRegistry {
 }
 
 // Validate envelope presence and core types (historical versions are allowed during validation)
-export function validateEnvelope(envelope: unknown): asserts envelope is BaseEventEnvelope<unknown> {
+export function validateEnvelope(
+  envelope: unknown,
+): asserts envelope is BaseEventEnvelope<unknown> {
   if (!envelope || typeof envelope !== 'object') {
     throw new MalformedEventEnvelopeException('Envelope must be a valid object');
   }
@@ -103,7 +114,11 @@ export function validateEnvelope(envelope: unknown): asserts envelope is BaseEve
     throw new MalformedEventEnvelopeException('sagaId is missing or empty');
   }
 
-  if (typeof env.timestamp !== 'string' || !env.timestamp.trim() || isNaN(Date.parse(env.timestamp))) {
+  if (
+    typeof env.timestamp !== 'string' ||
+    !env.timestamp.trim() ||
+    isNaN(Date.parse(env.timestamp))
+  ) {
     throw new MalformedEventEnvelopeException('timestamp is missing or invalid');
   }
 
@@ -122,7 +137,10 @@ export function upgradeVersion(
   targetVersion: number,
 ): BaseEventEnvelope<unknown> {
   if (!Number.isInteger(envelope.version) || envelope.version <= 0) {
-    throw new UnsupportedEventVersionException(`Invalid event version: ${envelope.version}`, envelope.version);
+    throw new UnsupportedEventVersionException(
+      `Invalid event version: ${envelope.version}`,
+      envelope.version,
+    );
   }
 
   if (envelope.version > CURRENT_EVENT_VERSION) {
@@ -159,7 +177,10 @@ export class EventSerializer {
       validateEnvelope(envelope);
 
       if (!Number.isInteger(envelope.version) || envelope.version <= 0) {
-        throw new UnsupportedEventVersionException(`Invalid event version: ${envelope.version}`, envelope.version);
+        throw new UnsupportedEventVersionException(
+          `Invalid event version: ${envelope.version}`,
+          envelope.version,
+        );
       }
 
       if (envelope.version !== CURRENT_EVENT_VERSION) {

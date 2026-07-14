@@ -8,7 +8,12 @@ export interface OrderAmountMismatchMetadata extends Record<string, unknown> {
 }
 
 export class OrderAmountMismatchException extends DomainException<OrderAmountMismatchMetadata> {
-  constructor(reference: string, expectedAmount: number, requestedAmount: number, options?: { cause?: Error }) {
+  constructor(
+    reference: string,
+    expectedAmount: number,
+    requestedAmount: number,
+    options?: { cause?: Error },
+  ) {
     super(
       `Amount mismatch: Order amount is ${expectedAmount}, requested amount is ${requestedAmount}.`,
       DomainErrorCode.ORDER_AMOUNT_MISMATCH,

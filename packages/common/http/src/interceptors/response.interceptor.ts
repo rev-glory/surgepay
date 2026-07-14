@@ -22,7 +22,9 @@ export class ResponseInterceptor {
   ): void {
     const headers = (config.headers || {}) as Record<string, string>;
     const requestId = (headers['X-Request-ID'] || requestContext.requestId || 'N/A') as string;
-    const correlationId = (headers['X-Correlation-ID'] || requestContext.correlationId || 'N/A') as string;
+    const correlationId = (headers['X-Correlation-ID'] ||
+      requestContext.correlationId ||
+      'N/A') as string;
     const merchantId = (headers['X-Merchant-ID'] || requestContext.merchantId || 'N/A') as string;
 
     logger.info(`Outgoing HTTP request to [${serviceName}] succeeded`, {
@@ -50,7 +52,9 @@ export class ResponseInterceptor {
   ): Error {
     const headers = (config.headers || {}) as Record<string, string>;
     const requestId = (headers['X-Request-ID'] || requestContext.requestId || 'N/A') as string;
-    const correlationId = (headers['X-Correlation-ID'] || requestContext.correlationId || 'N/A') as string;
+    const correlationId = (headers['X-Correlation-ID'] ||
+      requestContext.correlationId ||
+      'N/A') as string;
     const merchantId = (headers['X-Merchant-ID'] || requestContext.merchantId || 'N/A') as string;
     const method = (config.method || 'GET').toUpperCase();
     const fullUrl = `${config.baseURL || ''}${config.url || ''}`;
@@ -79,12 +83,21 @@ export class ResponseInterceptor {
       } else if (error.request) {
         const code = error.code;
         if (code === 'ETIMEDOUT' || code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-          translated = new RequestTimeoutException(`Request to [${serviceName}] timed out after ${config.timeout}ms`, details);
+          translated = new RequestTimeoutException(
+            `Request to [${serviceName}] timed out after ${config.timeout}ms`,
+            details,
+          );
         } else {
-          translated = new ServiceUnavailableException(`Service [${serviceName}] is unavailable (network error: ${code || 'UNKNOWN'})`, details);
+          translated = new ServiceUnavailableException(
+            `Service [${serviceName}] is unavailable (network error: ${code || 'UNKNOWN'})`,
+            details,
+          );
         }
       } else {
-        translated = new ServiceUnavailableException(`Request setup error to [${serviceName}]: ${error.message}`, details);
+        translated = new ServiceUnavailableException(
+          `Request setup error to [${serviceName}]: ${error.message}`,
+          details,
+        );
       }
     } else {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -95,7 +108,10 @@ export class ResponseInterceptor {
         url: fullUrl,
         originalError: err.message,
       };
-      translated = new ServiceUnavailableException(`Request error to [${serviceName}]: ${err.message}`, details);
+      translated = new ServiceUnavailableException(
+        `Request error to [${serviceName}]: ${err.message}`,
+        details,
+      );
     }
 
     logger.error(`Outgoing HTTP request to [${serviceName}] failed`, undefined, {

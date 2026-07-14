@@ -39,7 +39,8 @@ export class HealthService {
     };
     let overallStatus: HealthStatus = HEALTH_STATUS.UP;
 
-    const serviceName = process.env.SERVICE_NAME || this.configService.logging?.serviceName || 'unknown-service';
+    const serviceName =
+      process.env.SERVICE_NAME || this.configService.logging?.serviceName || 'unknown-service';
 
     const SERVICE_DEPENDENCIES: Record<string, string[]> = {
       'merchant-service': ['database', 'configuration'],
@@ -60,7 +61,10 @@ export class HealthService {
       indicators.push({ key: 'kafka', check: () => this.kafkaIndicator.isHealthy('kafka') });
     }
     if (deps.includes('configuration')) {
-      indicators.push({ key: 'configuration', check: () => this.configIndicator.isHealthy('configuration') });
+      indicators.push({
+        key: 'configuration',
+        check: () => this.configIndicator.isHealthy('configuration'),
+      });
     }
 
     for (const { key, check } of indicators) {
@@ -96,7 +100,8 @@ export class HealthService {
 
   async checkOverallHealth(): Promise<OverallHealthResponse> {
     const readiness = await this.checkReadiness();
-    const serviceName = process.env.SERVICE_NAME || this.configService.logging?.serviceName || 'unknown-service';
+    const serviceName =
+      process.env.SERVICE_NAME || this.configService.logging?.serviceName || 'unknown-service';
 
     return {
       status: readiness.status,
@@ -105,5 +110,4 @@ export class HealthService {
       checks: readiness.checks,
     };
   }
-
 }

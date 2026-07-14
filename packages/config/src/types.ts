@@ -74,5 +74,3 @@ export interface OutboxConfig {
   retentionDays: number;
   staleTimeoutMs: number;
 }
-
-

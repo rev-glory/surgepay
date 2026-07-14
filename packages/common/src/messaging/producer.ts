@@ -1,5 +1,12 @@
 import { Injectable, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
-import { context, propagation, type Span,SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
+import {
+  context,
+  propagation,
+  type Span,
+  SpanKind,
+  SpanStatusCode,
+  trace,
+} from '@opentelemetry/api';
 import { CompressionTypes, Kafka, Producer, RecordMetadata } from 'kafkajs';
 
 import { ConfigService } from '@surgepay/config';

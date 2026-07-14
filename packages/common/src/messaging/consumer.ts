@@ -1,5 +1,12 @@
 import { type OnModuleDestroy, type OnModuleInit, Optional } from '@nestjs/common';
-import { context, propagation, type Span,SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
+import {
+  context,
+  propagation,
+  type Span,
+  SpanKind,
+  SpanStatusCode,
+  trace,
+} from '@opentelemetry/api';
 import { type Consumer, Kafka } from 'kafkajs';
 
 import type { ConfigService } from '@surgepay/config';
@@ -164,12 +171,19 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
             };
 
             const startTime = Date.now();
-            this.metricsService?.recordConsumeAttempt(serviceName, envelope.eventType, this.groupId);
+            this.metricsService?.recordConsumeAttempt(
+              serviceName,
+              envelope.eventType,
+              this.groupId,
+            );
 
             this.logger.info(`Received event ${envelope.eventType}`, logContext);
 
             // 2. Check duplicate state
-            const existing = await this.inboxRepository.findByEventIdAndConsumer(envelope.eventId, this.groupId);
+            const existing = await this.inboxRepository.findByEventIdAndConsumer(
+              envelope.eventId,
+              this.groupId,
+            );
 
             if (existing) {
               if (existing.status === 'PROCESSED' || existing.status === 'DLQ_SENT') {
@@ -183,7 +197,11 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
                   span.setAttribute('inbox.status', existing.status);
                   span.setStatus({ code: SpanStatusCode.OK });
                 }
-                this.metricsService?.recordDuplicateSkip(serviceName, envelope.eventType, this.groupId);
+                this.metricsService?.recordDuplicateSkip(
+                  serviceName,
+                  envelope.eventType,
+                  this.groupId,
+                );
                 await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
                 return;
               }
@@ -202,17 +220,30 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
               // First time delivery, record as RECEIVED
               try {
                 await this.inboxRepository.recordReceived(envelope, this.groupId);
-                this.metricsService?.recordInboxReceived(serviceName, this.groupId, envelope.eventType);
-                this.logger.info(`Durable Inbox persistence succeeded for event ${envelope.eventId}`, logContext);
+                this.metricsService?.recordInboxReceived(
+                  serviceName,
+                  this.groupId,
+                  envelope.eventType,
+                );
+                this.logger.info(
+                  `Durable Inbox persistence succeeded for event ${envelope.eventId}`,
+                  logContext,
+                );
               } catch (err) {
                 if (isPrismaUniqueConstraintError(err)) {
-                  this.logger.info('Duplicate event delivery detected via DB constraint (concurrent insert)', {
-                    ...logContext,
-                    duplicate: true,
-                  });
+                  this.logger.info(
+                    'Duplicate event delivery detected via DB constraint (concurrent insert)',
+                    {
+                      ...logContext,
+                      duplicate: true,
+                    },
+                  );
 
                   // Re-evaluate the status of the record in DB
-                  const collided = await this.inboxRepository.findByEventIdAndConsumer(envelope.eventId, this.groupId);
+                  const collided = await this.inboxRepository.findByEventIdAndConsumer(
+                    envelope.eventId,
+                    this.groupId,
+                  );
                   if (collided) {
                     if (collided.status === 'PROCESSED' || collided.status === 'DLQ_SENT') {
                       if (span) {
@@ -220,8 +251,16 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
                         span.setAttribute('inbox.status', collided.status);
                         span.setStatus({ code: SpanStatusCode.OK });
                       }
-                      this.metricsService?.recordDuplicateSkip(serviceName, envelope.eventType, this.groupId);
-                      await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
+                      this.metricsService?.recordDuplicateSkip(
+                        serviceName,
+                        envelope.eventType,
+                        this.groupId,
+                      );
+                      await this.commitOffset(
+                        topic,
+                        partition,
+                        (BigInt(message.offset) + 1n).toString(),
+                      );
                       return;
                     }
                     if (collided.status === 'PROCESSING') {
@@ -229,7 +268,11 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
                     }
                   }
                 } else {
-                  this.logger.error(`Database write failed for event ${envelope.eventId}`, err as Error, logContext);
+                  this.logger.error(
+                    `Database write failed for event ${envelope.eventId}`,
+                    err as Error,
+                    logContext,
+                  );
                   throw err;
                 }
               }
@@ -244,26 +287,39 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
             );
 
             if (!transitioned) {
-              this.logger.info('Duplicate event delivery skipped (concurrency lock acquired by another worker)', {
-                ...logContext,
-                duplicate: true,
-              });
+              this.logger.info(
+                'Duplicate event delivery skipped (concurrency lock acquired by another worker)',
+                {
+                  ...logContext,
+                  duplicate: true,
+                },
+              );
               // Query DB again to see if it is PROCESSING, PROCESSED, or DLQ_SENT
-              const current = await this.inboxRepository.findByEventIdAndConsumer(envelope.eventId, this.groupId);
+              const current = await this.inboxRepository.findByEventIdAndConsumer(
+                envelope.eventId,
+                this.groupId,
+              );
               if (current && (current.status === 'PROCESSED' || current.status === 'DLQ_SENT')) {
                 if (span) {
                   span.setAttribute('inbox.duplicate', true);
                   span.setAttribute('inbox.status', current.status);
                   span.setStatus({ code: SpanStatusCode.OK });
                 }
-                this.metricsService?.recordDuplicateSkip(serviceName, envelope.eventType, this.groupId);
+                this.metricsService?.recordDuplicateSkip(
+                  serviceName,
+                  envelope.eventType,
+                  this.groupId,
+                );
                 await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
                 return;
               }
               throw new EventProcessingInProgressException(envelope.eventId, this.groupId);
             }
 
-            this.logger.info(`Acquired processing lock for event ${envelope.eventId}, executing handler`, logContext);
+            this.logger.info(
+              `Acquired processing lock for event ${envelope.eventId}, executing handler`,
+              logContext,
+            );
 
             // 4. Execute the business handler
             try {
@@ -271,31 +327,64 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
 
               // Mark as PROCESSED
               await this.inboxRepository.updateStatus(envelope.eventId, this.groupId, 'PROCESSED');
-              this.metricsService?.recordInboxProcessed(serviceName, this.groupId, envelope.eventType);
+              this.metricsService?.recordInboxProcessed(
+                serviceName,
+                this.groupId,
+                envelope.eventType,
+              );
 
               const durationMs = Date.now() - startTime;
-              this.metricsService?.recordHandlerDuration(serviceName, envelope.eventType, this.groupId, 'success', durationMs);
+              this.metricsService?.recordHandlerDuration(
+                serviceName,
+                envelope.eventType,
+                this.groupId,
+                'success',
+                durationMs,
+              );
 
               // Commit partition offset
               await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
-              this.logger.info(`Successfully processed event ${envelope.eventId} and committed offset`, logContext);
+              this.logger.info(
+                `Successfully processed event ${envelope.eventId} and committed offset`,
+                logContext,
+              );
             } catch (handlerErr: unknown) {
               const error = handlerErr as Error;
-              this.logger.error(`Handler execution failed for event ${envelope.eventId}`, error, logContext);
+              this.logger.error(
+                `Handler execution failed for event ${envelope.eventId}`,
+                error,
+                logContext,
+              );
 
               const durationMs = Date.now() - startTime;
-              this.metricsService?.recordHandlerDuration(serviceName, envelope.eventType, this.groupId, 'failure', durationMs);
-              this.metricsService?.recordHandlerFailure(serviceName, envelope.eventType, this.groupId);
+              this.metricsService?.recordHandlerDuration(
+                serviceName,
+                envelope.eventType,
+                this.groupId,
+                'failure',
+                durationMs,
+              );
+              this.metricsService?.recordHandlerFailure(
+                serviceName,
+                envelope.eventType,
+                this.groupId,
+              );
 
               // Transition back to RETRYING or FAILED depending on retry limits
-              const currentRecord = await this.inboxRepository.findByEventIdAndConsumer(envelope.eventId, this.groupId);
+              const currentRecord = await this.inboxRepository.findByEventIdAndConsumer(
+                envelope.eventId,
+                this.groupId,
+              );
               const currentRetry = currentRecord?.retryCount ?? 0;
               const limit = this.config.kafka.consumerRetryLimit;
               const newRetryCount = currentRetry + 1;
 
               if (newRetryCount <= limit) {
                 // Below retry limit: transition to RETRYING and re-throw
-                this.logger.info(`Event ${envelope.eventId} is below retry limit (${newRetryCount}/${limit}), transitioning to RETRYING`, logContext);
+                this.logger.info(
+                  `Event ${envelope.eventId} is below retry limit (${newRetryCount}/${limit}), transitioning to RETRYING`,
+                  logContext,
+                );
                 await this.inboxRepository.updateStatus(
                   envelope.eventId,
                   this.groupId,
@@ -305,7 +394,10 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
                 throw handlerErr;
               } else {
                 // Bounded retry limit exhausted: publish to DLQ and transition to DLQ_SENT
-                this.logger.warn(`Event ${envelope.eventId} exhausted retries (${newRetryCount}/${limit}), forwarding to DLQ`, logContext);
+                this.logger.warn(
+                  `Event ${envelope.eventId} exhausted retries (${newRetryCount}/${limit}), forwarding to DLQ`,
+                  logContext,
+                );
 
                 const dlqTopic = resolveDlqTopic();
                 const dlqPayload: DeadLetterRecord = {
@@ -330,7 +422,10 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
 
                 try {
                   await this.eventProducer.publish(dlqTopic, envelope.eventId, dlqEnvelope);
-                  this.logger.info(`DLQ publication succeeded for event ${envelope.eventId} to topic ${dlqTopic}`, logContext);
+                  this.logger.info(
+                    `DLQ publication succeeded for event ${envelope.eventId} to topic ${dlqTopic}`,
+                    logContext,
+                  );
 
                   // Update inbox status to DLQ_SENT
                   await this.inboxRepository.updateStatus(
@@ -339,17 +434,32 @@ export abstract class BaseKafkaConsumer implements OnModuleInit, OnModuleDestroy
                     'DLQ_SENT',
                     newRetryCount,
                   );
-                  this.metricsService?.recordInboxDlqEvent(serviceName, this.groupId, envelope.eventType);
-                  
+                  this.metricsService?.recordInboxDlqEvent(
+                    serviceName,
+                    this.groupId,
+                    envelope.eventType,
+                  );
+
                   // Sync the DLQ depth gauge immediately from the DB
                   await syncDlqDepth();
 
                   // Commit partition offset
-                  await this.commitOffset(topic, partition, (BigInt(message.offset) + 1n).toString());
-                  this.logger.info(`Inbox marked DLQ_SENT and offset committed for event ${envelope.eventId}`, logContext);
+                  await this.commitOffset(
+                    topic,
+                    partition,
+                    (BigInt(message.offset) + 1n).toString(),
+                  );
+                  this.logger.info(
+                    `Inbox marked DLQ_SENT and offset committed for event ${envelope.eventId}`,
+                    logContext,
+                  );
                 } catch (dlqErr: unknown) {
                   const error = dlqErr as Error;
-                  this.logger.error(`DLQ publication failed for event ${envelope.eventId}`, error, logContext);
+                  this.logger.error(
+                    `DLQ publication failed for event ${envelope.eventId}`,
+                    error,
+                    logContext,
+                  );
 
                   // Transition to FAILED so it is retried next time (offset remains uncommitted)
                   await this.inboxRepository.updateStatus(

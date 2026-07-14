@@ -10,7 +10,14 @@ export interface FraudRejectedMetadata extends Record<string, unknown> {
 }
 
 export class FraudRejectedException extends DomainException<FraudRejectedMetadata> {
-  constructor(merchantId: string, amount: number, currency: string, riskScore: number, reason?: string, options?: { cause?: Error }) {
+  constructor(
+    merchantId: string,
+    amount: number,
+    currency: string,
+    riskScore: number,
+    reason?: string,
+    options?: { cause?: Error },
+  ) {
     super(
       'Payment rejected by fraud rules',
       DomainErrorCode.FRAUD_REJECTED,

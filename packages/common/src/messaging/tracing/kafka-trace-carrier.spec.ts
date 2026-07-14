@@ -38,7 +38,10 @@ describe('Kafka Trace Carrier Spec', () => {
       expect(result1).toBeUndefined();
 
       const carrierWithNull = { traceparent: null };
-      const result2 = kafkaTextMapGetter.get(carrierWithNull as Record<string, unknown>, 'traceparent');
+      const result2 = kafkaTextMapGetter.get(
+        carrierWithNull as Record<string, unknown>,
+        'traceparent',
+      );
       expect(result2).toBeUndefined();
     });
 
@@ -55,7 +58,11 @@ describe('Kafka Trace Carrier Spec', () => {
   describe('kafkaTextMapSetter', () => {
     it('should write key-value string pairs into the carrier', () => {
       const carrier: Record<string, string> = {};
-      kafkaTextMapSetter.set(carrier, 'traceparent', '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01');
+      kafkaTextMapSetter.set(
+        carrier,
+        'traceparent',
+        '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+      );
       expect(carrier.traceparent).toBe('00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01');
     });
   });

@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { Counter, Gauge, Histogram,Registry } from 'prom-client';
+import { Counter, Gauge, Histogram, Registry } from 'prom-client';
 
 export { Registry } from 'prom-client';
 
@@ -33,13 +33,15 @@ export class MetricsService {
   private readonly inboxDlqEvents: Counter<string>;
   private readonly inboxDlqDepth: Gauge<string>;
 
-  constructor(
-    @Optional() @Inject('CUSTOM_REGISTRY') customRegistry?: Registry,
-  ) {
+  constructor(@Optional() @Inject('CUSTOM_REGISTRY') customRegistry?: Registry) {
     this.registry = customRegistry || processRegistry;
 
     // Helper function to register or retrieve metrics dynamically
-    const getOrRegisterCounter = <T extends string>(name: string, help: string, labelNames: T[]): Counter<T> => {
+    const getOrRegisterCounter = <T extends string>(
+      name: string,
+      help: string,
+      labelNames: T[],
+    ): Counter<T> => {
       const existing = this.registry.getSingleMetric(name);
       if (existing) {
         return existing as Counter<T>;
@@ -52,7 +54,11 @@ export class MetricsService {
       });
     };
 
-    const getOrRegisterGauge = <T extends string>(name: string, help: string, labelNames: T[]): Gauge<T> => {
+    const getOrRegisterGauge = <T extends string>(
+      name: string,
+      help: string,
+      labelNames: T[],
+    ): Gauge<T> => {
       const existing = this.registry.getSingleMetric(name);
       if (existing) {
         return existing as Gauge<T>;
@@ -85,20 +91,44 @@ export class MetricsService {
     };
 
     // 1. Producer / Publication Metrics
-    this.eventsPublished = getOrRegisterCounter('events_published_total', 'Count of successfully acknowledged Kafka events', ['service', 'eventType', 'status']);
-    this.publishFailures = getOrRegisterCounter('publish_failures_total', 'Count of failed Kafka publication attempts', ['service', 'eventType', 'status']);
+    this.eventsPublished = getOrRegisterCounter(
+      'events_published_total',
+      'Count of successfully acknowledged Kafka events',
+      ['service', 'eventType', 'status'],
+    );
+    this.publishFailures = getOrRegisterCounter(
+      'publish_failures_total',
+      'Count of failed Kafka publication attempts',
+      ['service', 'eventType', 'status'],
+    );
     this.publishDuration = getOrRegisterHistogram(
       'publish_duration_ms',
       'Kafka publication latency in ms',
       ['service', 'eventType', 'status'],
       [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000],
     );
-    this.retryTotal = getOrRegisterCounter('retry_total', 'Cumulative count of application-visible event publication retry attempts', ['service', 'eventType', 'status']);
+    this.retryTotal = getOrRegisterCounter(
+      'retry_total',
+      'Cumulative count of application-visible event publication retry attempts',
+      ['service', 'eventType', 'status'],
+    );
 
     // 2. Consumer Metrics
-    this.eventsConsumed = getOrRegisterCounter('events_consumed_total', 'Total events received by the consumer (including duplicates)', ['service', 'eventType', 'consumer', 'status']);
-    this.duplicateEvents = getOrRegisterCounter('duplicate_events_total', 'Events identified as duplicates and skipped', ['service', 'eventType', 'consumer', 'status']);
-    this.consumerFailures = getOrRegisterCounter('consumer_failures_total', 'Cumulative handler execution failures', ['service', 'eventType', 'consumer', 'status']);
+    this.eventsConsumed = getOrRegisterCounter(
+      'events_consumed_total',
+      'Total events received by the consumer (including duplicates)',
+      ['service', 'eventType', 'consumer', 'status'],
+    );
+    this.duplicateEvents = getOrRegisterCounter(
+      'duplicate_events_total',
+      'Events identified as duplicates and skipped',
+      ['service', 'eventType', 'consumer', 'status'],
+    );
+    this.consumerFailures = getOrRegisterCounter(
+      'consumer_failures_total',
+      'Cumulative handler execution failures',
+      ['service', 'eventType', 'consumer', 'status'],
+    );
     this.consumerDuration = getOrRegisterHistogram(
       'consumer_duration_ms',
       'Business handler execution duration in ms',
@@ -107,9 +137,21 @@ export class MetricsService {
     );
 
     // 3. Outbox Metrics
-    this.outboxPending = getOrRegisterGauge('outbox_pending_events', 'Count of outbox records awaiting publication', ['service']);
-    this.outboxPublished = getOrRegisterGauge('outbox_published_events', 'Count of outbox records in PUBLISHED state', ['service']);
-    this.outboxFailed = getOrRegisterGauge('outbox_failed_events', 'Count of outbox records in permanent FAILED state', ['service']);
+    this.outboxPending = getOrRegisterGauge(
+      'outbox_pending_events',
+      'Count of outbox records awaiting publication',
+      ['service'],
+    );
+    this.outboxPublished = getOrRegisterGauge(
+      'outbox_published_events',
+      'Count of outbox records in PUBLISHED state',
+      ['service'],
+    );
+    this.outboxFailed = getOrRegisterGauge(
+      'outbox_failed_events',
+      'Count of outbox records in permanent FAILED state',
+      ['service'],
+    );
     this.outboxLag = getOrRegisterHistogram(
       'outbox_lag_ms',
       'Latency between outbox event database creation and successful Kafka publish',
@@ -118,10 +160,26 @@ export class MetricsService {
     );
 
     // 4. Inbox & DLQ Metrics
-    this.inboxReceived = getOrRegisterCounter('inbox_received_events_total', 'Cumulative events recorded as RECEIVED', ['service', 'consumer', 'eventType']);
-    this.inboxProcessed = getOrRegisterCounter('inbox_processed_events_total', 'Cumulative events marked PROCESSED', ['service', 'consumer', 'eventType']);
-    this.inboxDlqEvents = getOrRegisterCounter('inbox_dlq_events_total', 'Cumulative events sent to DLQ', ['service', 'consumer', 'eventType']);
-    this.inboxDlqDepth = getOrRegisterGauge('inbox_dlq_depth', 'Number of unresolved dead-lettered events in the local database', ['service', 'consumer']);
+    this.inboxReceived = getOrRegisterCounter(
+      'inbox_received_events_total',
+      'Cumulative events recorded as RECEIVED',
+      ['service', 'consumer', 'eventType'],
+    );
+    this.inboxProcessed = getOrRegisterCounter(
+      'inbox_processed_events_total',
+      'Cumulative events marked PROCESSED',
+      ['service', 'consumer', 'eventType'],
+    );
+    this.inboxDlqEvents = getOrRegisterCounter(
+      'inbox_dlq_events_total',
+      'Cumulative events sent to DLQ',
+      ['service', 'consumer', 'eventType'],
+    );
+    this.inboxDlqDepth = getOrRegisterGauge(
+      'inbox_dlq_depth',
+      'Number of unresolved dead-lettered events in the local database',
+      ['service', 'consumer'],
+    );
   }
 
   // --- Helper Methods for Producer ---
@@ -152,7 +210,13 @@ export class MetricsService {
     this.consumerFailures.inc({ service, eventType, consumer, status: 'failure' });
   }
 
-  recordHandlerDuration(service: string, eventType: string, consumer: string, status: 'success' | 'failure', durationMs: number): void {
+  recordHandlerDuration(
+    service: string,
+    eventType: string,
+    consumer: string,
+    status: 'success' | 'failure',
+    durationMs: number,
+  ): void {
     this.consumerDuration.observe({ service, eventType, consumer, status }, durationMs);
   }
 

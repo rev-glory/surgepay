@@ -158,7 +158,11 @@ describe('BaseKafkaConsumer Tracing Unit Tests', () => {
     });
 
     // Assert trace context extraction occurred
-    expect(propagation.extract).toHaveBeenCalledWith(expect.any(Object), headers, expect.any(Object));
+    expect(propagation.extract).toHaveBeenCalledWith(
+      expect.any(Object),
+      headers,
+      expect.any(Object),
+    );
     expect(mockTracer.startSpan).toHaveBeenCalledWith(
       'test-topic process',
       expect.objectContaining({

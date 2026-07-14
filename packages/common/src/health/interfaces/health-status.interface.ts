@@ -26,4 +26,3 @@ export interface OverallHealthResponse {
   timestamp: string;
   checks: Record<string, HealthStatus>;
 }
-

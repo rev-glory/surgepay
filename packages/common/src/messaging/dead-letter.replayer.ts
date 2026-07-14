@@ -33,7 +33,10 @@ export class DeadLetterReplayer {
       // 3. Resolve the original topic mapping
       const topic = TOPIC_REGISTRY[validatedEnvelope.eventType];
       if (!topic) {
-        return { success: false, error: `Unknown event-to-topic mapping for eventType: ${validatedEnvelope.eventType}` };
+        return {
+          success: false,
+          error: `Unknown event-to-topic mapping for eventType: ${validatedEnvelope.eventType}`,
+        };
       }
 
       // 4. Republish the original event using its original eventId and key

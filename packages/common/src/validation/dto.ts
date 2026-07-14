@@ -1,6 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsISO4217CurrencyCode, IsObject, IsOptional, IsPositive, IsString, IsUUID, Min } from 'class-validator';
+import {
+  IsInt,
+  IsISO4217CurrencyCode,
+  IsObject,
+  IsOptional,
+  IsPositive,
+  IsString,
+  IsUUID,
+  Min,
+} from 'class-validator';
 
 import { CreatePaymentRequest } from '@surgepay/contracts';
 

@@ -7,5 +7,7 @@ export default registerAs('http', (): HttpConfig => ({
   host: process.env.HOST || 'localhost',
   apiPrefix: process.env.API_PREFIX || 'api/v1',
   keepAlive: process.env.HTTP_KEEP_ALIVE === 'true' || process.env.HTTP_KEEP_ALIVE === undefined,
-  maxSockets: process.env.HTTP_KEEP_ALIVE_MAX_SOCKETS ? parseInt(process.env.HTTP_KEEP_ALIVE_MAX_SOCKETS, 10) : 100,
+  maxSockets: process.env.HTTP_KEEP_ALIVE_MAX_SOCKETS
+    ? parseInt(process.env.HTTP_KEEP_ALIVE_MAX_SOCKETS, 10)
+    : 100,
 }));

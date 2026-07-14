@@ -1,3 +1,4 @@
+import { context, propagation } from '@opentelemetry/api';
 import type { AxiosRequestConfig } from 'axios';
 
 import type { RequestContextService } from '@surgepay/common';
@@ -28,6 +29,12 @@ export class RequestInterceptor {
     }
     if (merchantId && !headers['x-merchant-id'] && !headers['X-Merchant-ID']) {
       headers['X-Merchant-ID'] = merchantId;
+    }
+
+    try {
+      propagation.inject(context.active(), headers);
+    } catch {
+      // Safe degrade if propagation fails
     }
 
     config.headers = headers as AxiosRequestConfig['headers'];

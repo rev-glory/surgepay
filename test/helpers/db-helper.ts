@@ -32,6 +32,11 @@ export async function clearDatabase(): Promise<void> {
   } catch (err) {
     // Ignore if table/schema is not pushed yet in other contexts
   }
+  try {
+    await prisma.$executeRawUnsafe('TRUNCATE TABLE "order"."InboxEvent" CASCADE;');
+  } catch (err) {
+    // Ignore if table/schema is not pushed yet in other contexts
+  }
 }
 
 /**
