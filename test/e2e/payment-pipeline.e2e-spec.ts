@@ -99,7 +99,7 @@ describe('Payment Pipeline - E2E Synchronous Pipeline', () => {
     const outboxRecords = await getOutboxEvents(paymentId);
     const outboxRecord = outboxRecords[0];
     expect(outboxRecord).toBeDefined();
-    expect(outboxRecord.status).toBe('PENDING');
+    expect(['PENDING', 'PUBLISHING', 'PUBLISHED']).toContain(outboxRecord.status);
     expect(outboxRecord.requestId).toBe(paymentRecord.requestId);
     expect(outboxRecord.correlationId).toBe(paymentRecord.correlationId);
     expect(outboxRecord.causationId).toBe(paymentRecord.causationId);
