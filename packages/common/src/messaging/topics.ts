@@ -1,6 +1,9 @@
 import {
+  CHECK_ORDER_ELIGIBILITY,
   CHECK_PAYOUT_ELIGIBILITY,
   NOTIFY_MERCHANT,
+  ORDER_ELIGIBILITY_CONFIRMED,
+  ORDER_ELIGIBILITY_REJECTED,
   PAYMENT_COMPLETED,
   PAYMENT_INITIATED,
   RECORD_LEDGER_ENTRY,
@@ -18,6 +21,12 @@ export const TOPIC_REGISTRY: Record<string, string> = {
   [RESERVE_BALANCE]: 'balance.commands',
   [REVERSE_BALANCE]: 'balance.commands',
   [NOTIFY_MERCHANT]: 'notification.commands',
+  // Order Eligibility — roadmap-defined (Q3 Option A approved in implementation_plan.md).
+  // Commands arrive on order.commands; result events are published to order.events.
+  // Commit 6 Saga handler subscribes to order.events.
+  [CHECK_ORDER_ELIGIBILITY]: 'order.commands',
+  [ORDER_ELIGIBILITY_CONFIRMED]: 'order.events',
+  [ORDER_ELIGIBILITY_REJECTED]: 'order.events',
   'payments.dlq': 'payments.dlq',
 };
 

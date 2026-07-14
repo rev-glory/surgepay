@@ -13,6 +13,16 @@ export const RESERVE_BALANCE = 'ReserveBalance';
 export const REVERSE_BALANCE = 'ReverseBalance';
 export const NOTIFY_MERCHANT = 'NotifyMerchant';
 
+// Order Eligibility — roadmap-defined extension (commits.txt Commit 5, lines 7018–7076)
+// Architecture note: CheckOrderEligibility, OrderEligibilityConfirmed, and
+// OrderEligibilityRejected are absent from doc-v3 §9.4 Saga Commands and §9 event sections.
+// They are defined by the approved build roadmap and have received explicit architectural
+// approval (implementation_plan.md Open Question 1, Option C). This comment marks the gap
+// for a future doc-v3 §9.4 amendment.
+export const CHECK_ORDER_ELIGIBILITY = 'CheckOrderEligibility';
+export const ORDER_ELIGIBILITY_CONFIRMED = 'OrderEligibilityConfirmed';
+export const ORDER_ELIGIBILITY_REJECTED = 'OrderEligibilityRejected';
+
 // Ledger Events
 export const LEDGER_ENTRY_RECORDED = 'LedgerEntryRecorded';
 export const LEDGER_RECORDING_FAILED = 'LedgerRecordingFailed';

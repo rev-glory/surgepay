@@ -136,6 +136,56 @@ export type NotifyMerchantCommand = BaseEventEnvelope<NotifyMerchantPayload> & {
   eventType: typeof constants.NOTIFY_MERCHANT;
 };
 
+// --- ORDER ELIGIBILITY COMMAND PAYLOAD & EVENTS ---
+// Roadmap-defined extension (commits.txt Commit 5, lines 7018–7076).
+// See constants.ts for the full architecture gap note.
+
+export interface CheckOrderEligibilityPayload {
+  orderId: string;
+  paymentId: string;
+  merchantId: string;
+  /** Integer cents — strict equality check, no floating-point arithmetic. */
+  amount: number;
+  currency: string;
+}
+export type CheckOrderEligibilityCommand = BaseEventEnvelope<CheckOrderEligibilityPayload> & {
+  eventType: typeof constants.CHECK_ORDER_ELIGIBILITY;
+};
+
+/**
+ * Reasons for which an order may be rejected as ineligible for saga continuation.
+ *
+ * MERCHANT_MISMATCH is intentionally absent. A merchant ID mismatch is treated identically
+ * to ORDER_NOT_FOUND to prevent cross-merchant order existence leakage. This matches the
+ * existing behaviour of the synchronous OrderService.validateOrder() endpoint and was
+ * approved as Q2 Option B in the implementation plan.
+ *
+ * Defined by commits.txt Commit 5 (lines 7058–7067).
+ */
+export enum OrderEligibilityRejectedReason {
+  ORDER_NOT_FOUND = 'ORDER_NOT_FOUND',
+  ORDER_CANCELLED = 'ORDER_CANCELLED',
+  ORDER_ALREADY_PAID = 'ORDER_ALREADY_PAID',
+  AMOUNT_MISMATCH = 'AMOUNT_MISMATCH',
+  INVALID_CURRENCY = 'INVALID_CURRENCY',
+}
+
+export interface OrderEligibilityConfirmedPayload {
+  orderId: string;
+}
+export type OrderEligibilityConfirmedEvent = BaseEventEnvelope<OrderEligibilityConfirmedPayload> & {
+  eventType: typeof constants.ORDER_ELIGIBILITY_CONFIRMED;
+};
+
+export interface OrderEligibilityRejectedPayload {
+  /** null when the order was not found (including merchant mismatch — see enum doc above). */
+  orderId: string | null;
+  reason: OrderEligibilityRejectedReason;
+}
+export type OrderEligibilityRejectedEvent = BaseEventEnvelope<OrderEligibilityRejectedPayload> & {
+  eventType: typeof constants.ORDER_ELIGIBILITY_REJECTED;
+};
+
 // --- LEDGER SERVICE PAYLOADS & EVENTS ---
 
 export interface LedgerEntryRecordedPayload {
