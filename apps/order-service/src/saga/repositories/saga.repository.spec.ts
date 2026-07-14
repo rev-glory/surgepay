@@ -2,8 +2,8 @@ import { ConflictException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 
 import {
-  SagaStatus,
   OrderValidationStatus,
+  SagaStatus,
   SagaTransitionType,
 } from '../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';

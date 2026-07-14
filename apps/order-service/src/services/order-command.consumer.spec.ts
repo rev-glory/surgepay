@@ -16,11 +16,10 @@ import {
 } from '@surgepay/events';
 
 import { OrderEntity } from '../entities/order.entity';
-import { OrderStatus } from '../generated/client';
-import { type InboxEvent } from '../generated/client';
+import { type InboxEvent,OrderStatus } from '../generated/client';
 import { OrderInboxRepository } from '../repositories/inbox.repository';
-import { OrderEventConsumer } from './order-event.consumer';
 import { OrderService } from './order.service';
+import { OrderEventConsumer } from './order-event.consumer';
 
 // ---------------------------------------------------------------------------
 // Kafka mock — prevents real socket connections

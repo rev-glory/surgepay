@@ -1,4 +1,4 @@
-import { SagaStatus, OrderValidationStatus } from '../../generated/client';
+import { OrderValidationStatus,SagaStatus } from '../../generated/client';
 import { SagaInstanceEntity } from './saga-instance.entity';
 
 describe('SagaInstanceEntity', () => {

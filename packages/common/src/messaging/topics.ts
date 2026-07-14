@@ -1,6 +1,9 @@
 import {
   CHECK_ORDER_ELIGIBILITY,
   CHECK_PAYOUT_ELIGIBILITY,
+  LEDGER_ENTRY_RECORDED,
+  LEDGER_RECORDING_FAILED,
+  LEDGER_REVERSED,
   NOTIFY_MERCHANT,
   ORDER_ELIGIBILITY_CONFIRMED,
   ORDER_ELIGIBILITY_REJECTED,
@@ -27,6 +30,9 @@ export const TOPIC_REGISTRY: Record<string, string> = {
   [CHECK_ORDER_ELIGIBILITY]: 'order.commands',
   [ORDER_ELIGIBILITY_CONFIRMED]: 'order.events',
   [ORDER_ELIGIBILITY_REJECTED]: 'order.events',
+  [LEDGER_ENTRY_RECORDED]: 'ledger.events',
+  [LEDGER_RECORDING_FAILED]: 'ledger.events',
+  [LEDGER_REVERSED]: 'ledger.events',
   'payments.dlq': 'payments.dlq',
 };
 

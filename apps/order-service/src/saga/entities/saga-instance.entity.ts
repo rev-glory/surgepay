@@ -1,4 +1,4 @@
-import { SagaStatus, OrderValidationStatus } from '../../generated/client';
+import { OrderValidationStatus,SagaStatus } from '../../generated/client';
 
 export class SagaInstanceEntity {
   constructor(

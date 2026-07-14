@@ -2,14 +2,14 @@ import { Injectable } from '@nestjs/common';
 
 import { LoggerService } from '@surgepay/common';
 import {
-  type PaymentCompletedEvent,
   type OrderEligibilityConfirmedEvent,
   type OrderEligibilityRejectedEvent,
+  type PaymentCompletedEvent,
 } from '@surgepay/events';
 
 import {
-  SagaStatus,
   OrderValidationStatus,
+  SagaStatus,
   SagaTransitionType,
 } from '../generated/client';
 import { SagaInstanceEntity } from './entities/saga-instance.entity';

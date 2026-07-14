@@ -139,6 +139,13 @@ async function main() {
         DATABASE_URL: `${baseDatabaseUrl}&schema=order`,
       },
     });
+    execSync('npx prisma db push --schema=apps/ledger-service/prisma/schema.prisma --skip-generate', {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        DATABASE_URL: `${baseDatabaseUrl}&schema=ledger`,
+      },
+    });
     console.log('✓ Database schema synchronized successfully.');
 
     // 6. Run Jest Integration Tests

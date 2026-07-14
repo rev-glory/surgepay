@@ -11,16 +11,16 @@ import { ConfigService } from '@surgepay/config';
 import {
   ORDER_ELIGIBILITY_CONFIRMED,
   ORDER_ELIGIBILITY_REJECTED,
-  OrderEligibilityRejectedReason,
   type OrderEligibilityConfirmedEvent,
   type OrderEligibilityRejectedEvent,
+  OrderEligibilityRejectedReason,
 } from '@surgepay/events';
 
 import {
-  SagaStatus,
-  OrderValidationStatus,
-  SagaTransitionType,
   type InboxEvent,
+  OrderValidationStatus,
+  SagaStatus,
+  SagaTransitionType,
 } from '../../generated/client';
 import { OrderInboxRepository } from '../../repositories/inbox.repository';
 import { SagaInstanceEntity } from '../entities/saga-instance.entity';
@@ -78,7 +78,6 @@ jest.mock('kafkajs', () => {
 
 describe('SagaOrderEventsConsumer & Saga Invariants', () => {
   let consumer: SagaOrderEventsConsumer;
-  let sagaService: SagaService;
   let sagaRepositoryMock: {
     findById: jest.Mock;
     findByPaymentId: jest.Mock;
@@ -167,7 +166,6 @@ describe('SagaOrderEventsConsumer & Saga Invariants', () => {
     }).compile();
 
     consumer = module.get<SagaOrderEventsConsumer>(SagaOrderEventsConsumer);
-    sagaService = module.get<SagaService>(SagaService);
   });
 
   afterEach(async () => {

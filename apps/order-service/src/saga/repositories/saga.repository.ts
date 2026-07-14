@@ -1,9 +1,9 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 
 import {
+  OrderValidationStatus,
   type SagaInstance,
   SagaStatus,
-  OrderValidationStatus,
   SagaTransitionType,
 } from '../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';

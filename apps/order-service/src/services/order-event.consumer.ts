@@ -1,5 +1,6 @@
-import { Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+
+import { Injectable, Optional } from '@nestjs/common';
 
 import {
   BaseKafkaConsumer,
