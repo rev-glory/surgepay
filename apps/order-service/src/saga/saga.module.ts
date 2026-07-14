@@ -5,6 +5,7 @@ import { ConfigModule } from '@surgepay/config';
 
 import { OrderInboxRepository } from '../repositories/inbox.repository';
 import { SagaPaymentCompletedConsumer } from './handlers/payment-completed.handler';
+import { SagaRepository } from './repositories/saga.repository';
 import { SagaService } from './saga.service';
 
 @Module({
@@ -14,7 +15,8 @@ import { SagaService } from './saga.service';
     SagaPaymentCompletedConsumer,
     OrderInboxRepository,
     KafkaEventProducer,
+    SagaRepository,
   ],
-  exports: [SagaService, SagaPaymentCompletedConsumer],
+  exports: [SagaService, SagaPaymentCompletedConsumer, SagaRepository],
 })
 export class SagaModule {}

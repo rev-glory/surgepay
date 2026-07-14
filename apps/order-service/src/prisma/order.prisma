@@ -66,3 +66,31 @@ model InboxEvent {
   @@index([sagaId])
   @@index([receivedAt])
 }
+
+enum SagaStatus {
+  LEDGER_PENDING
+  LEDGER_RECORDED
+  ELIGIBILITY_PENDING
+  BALANCE_PENDING
+  BALANCE_RESERVED
+  NOTIFICATION_PENDING
+  NOTIFIED
+  REVERSED
+  CLOSED
+}
+
+model SagaInstance {
+  id            String     @id
+  paymentId     String     @unique
+  correlationId String     @unique
+  status        SagaStatus @default(LEDGER_PENDING)
+  version       Int        @default(0)
+
+  startedAt     DateTime   @default(now()) @db.Timestamptz(6)
+  completedAt   DateTime?  @db.Timestamptz(6)
+  createdAt     DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime   @updatedAt @db.Timestamptz(6)
+
+  @@index([status])
+  @@index([correlationId])
+}
