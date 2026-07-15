@@ -26,6 +26,14 @@ TOPICS=(
   # Notification Topics
   "notification.commands"
   "notification.events"
+
+  # Order Topics
+  "order.commands"
+  "order.events"
+
+  # Retry Scheduler Topics
+  "retry.commands"
+  "retry.events"
 )
 
 echo "Starting topic creation on Redpanda..."

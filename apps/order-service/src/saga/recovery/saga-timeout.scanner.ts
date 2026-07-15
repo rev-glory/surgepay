@@ -177,7 +177,7 @@ export class SagaTimeoutScanner implements OnApplicationBootstrap, OnApplication
 
     saga.startHandoff();
 
-    await this.sagaRepository.update(saga, []);
+    const updatedSaga = await this.sagaRepository.update(saga, []);
 
     // Create and save transactional outbox event
     const outboxEvent = OrderOutboxEventEntity.create({
@@ -193,20 +193,20 @@ export class SagaTimeoutScanner implements OnApplicationBootstrap, OnApplication
     await (this.sagaRepository as any).prisma.client.$transaction(async (tx: any) => {
       // Re-read and check optimistic lock
       const current = await tx.sagaInstance.findUnique({
-        where: { id: saga.id },
+        where: { id: updatedSaga.id },
       });
       if (!current) {
-        throw new Error(`SagaInstance with id ${saga.id} not found`);
+        throw new Error(`SagaInstance with id ${updatedSaga.id} not found`);
       }
-      if (current.version !== saga.version) {
+      if (current.version !== updatedSaga.version) {
         throw new Error('Optimistic lock check failed concurrently.');
       }
 
       // Update saga handoff
       await tx.sagaInstance.update({
-        where: { id: saga.id },
+        where: { id: updatedSaga.id },
         data: {
-          retryHandoffAt: saga.retryHandoffAt,
+          retryHandoffAt: updatedSaga.retryHandoffAt,
           version: { increment: 1 },
         },
       });

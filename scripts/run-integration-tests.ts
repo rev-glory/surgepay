@@ -97,7 +97,12 @@ async function main() {
       'balance.commands',
       'balance.events',
       'notification.commands',
-      'notification.events'
+      'notification.events',
+      'orders',
+      'order.events',
+      'order.commands',
+      'retry.events',
+      'retry.commands'
     ];
 
     console.log('🔨 Bootstrapping Kafka topics in Redpanda container...');
@@ -116,9 +121,9 @@ async function main() {
     }
     console.log('✓ Kafka topics bootstrapped successfully.');
 
-    // 5. Execute Prisma DB Push
+    // 5. Execute Prisma DB Push & Generate
     console.log('🔨 Running Prisma schema push to test database...');
-    execSync('npx prisma db push --schema=apps/merchant-service/prisma/schema.prisma --skip-generate', {
+    execSync('npx prisma db push --schema=apps/merchant-service/prisma/schema.prisma', {
       stdio: 'inherit',
       env: {
         ...process.env,
@@ -151,6 +156,20 @@ async function main() {
       env: {
         ...process.env,
         DATABASE_URL: `${baseDatabaseUrl}&schema=balance`,
+      },
+    });
+    execSync('npx prisma db push --schema=apps/outbox-relay/prisma/schema.prisma --skip-generate', {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        DATABASE_URL: `${baseDatabaseUrl}&schema=outbox`,
+      },
+    });
+    execSync('npx prisma db push --schema=apps/retry-scheduler/prisma/schema.prisma --skip-generate', {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        DATABASE_URL: `${baseDatabaseUrl}&schema=retry`,
       },
     });
     console.log('✓ Database schema synchronized successfully.');

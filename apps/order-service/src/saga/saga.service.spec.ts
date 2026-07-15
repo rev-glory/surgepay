@@ -57,7 +57,7 @@ describe('SagaService', () => {
       findByPaymentId: jest.fn(),
       findById: jest.fn(),
       create: jest.fn(),
-      update: jest.fn(),
+      update: jest.fn(async (saga) => saga),
     };
     commandDispatcherMock = {
       dispatch: jest.fn().mockResolvedValue([]),

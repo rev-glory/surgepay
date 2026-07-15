@@ -180,7 +180,7 @@ export class CompensationCoordinator {
     this.logger.info('BalanceReversed ack received for Scenario 3. Persisting checkpoint and dispatching ReverseLedgerEntry.', logContext);
 
     // Persist BALANCE_REVERSAL_ACKNOWLEDGED checkpoint
-    await this.sagaRepository.update(saga, [
+    const updatedSaga = await this.sagaRepository.update(saga, [
       {
         transitionType: SagaTransitionType.COMPENSATION_STEP,
         fromState: saga.status,
@@ -192,7 +192,7 @@ export class CompensationCoordinator {
     ]);
 
     // Now dispatch ReverseLedgerEntry (second compensation step in Scenario 3)
-    await this.dispatchReverseLedgerEntry(saga, event.eventId);
+    await this.dispatchReverseLedgerEntry(updatedSaga, event.eventId);
   }
 
   /**

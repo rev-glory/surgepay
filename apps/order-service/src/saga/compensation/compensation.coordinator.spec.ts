@@ -138,7 +138,7 @@ describe('CompensationCoordinator', () => {
 
   beforeEach(async () => {
     const mockSagaRepository: jest.Mocked<Partial<SagaRepository>> = {
-      update: jest.fn().mockResolvedValue(undefined),
+      update: jest.fn(async (saga) => saga),
       hasCompensationStep: jest.fn().mockResolvedValue(false),
     };
 

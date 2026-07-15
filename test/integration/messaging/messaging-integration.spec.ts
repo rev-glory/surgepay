@@ -4,7 +4,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { propagation } from '@opentelemetry/api';
 import { Kafka, EachMessagePayload } from 'kafkajs';
 
-import { BaseEventEnvelope, PAYMENT_INITIATED } from '@surgepay/events';
+import { BaseEventEnvelope, PAYMENT_INITIATED, CHECK_ORDER_ELIGIBILITY } from '@surgepay/events';
 import { ConfigService } from '@surgepay/config';
 import { KafkaEventProducer, EventSerializer } from '@surgepay/common';
 
@@ -240,7 +240,10 @@ describe('Asynchronous Messaging Integration Spec', () => {
   // --- Scenario 3 & 4: Consumer Inbox Processing & Duplicate Delivery ---
   it('should process a consumed Kafka event, persist in Inbox as PROCESSED, execute handler, and suppress subsequent duplicates', async () => {
     const eventId = randomUUID();
-    const envelope = createTestEnvelope(eventId);
+    const envelope = {
+      ...createTestEnvelope(eventId),
+      eventType: CHECK_ORDER_ELIGIBILITY,
+    };
 
     // Track handler executions
     let handlerExecutions = 0;
@@ -268,7 +271,7 @@ describe('Asynchronous Messaging Integration Spec', () => {
       
       // Publish first delivery
       await testProducer.send({
-        topic: 'payments.initiated',
+        topic: 'order.commands',
         messages: [
           {
             key: randomUUID(),
@@ -292,7 +295,7 @@ describe('Asynchronous Messaging Integration Spec', () => {
 
       // Publish second delivery (Duplicate)
       await testProducer.send({
-        topic: 'payments.initiated',
+        topic: 'order.commands',
         messages: [
           {
             key: randomUUID(),
@@ -355,8 +358,17 @@ describe('Asynchronous Messaging Integration Spec', () => {
     } finally {
       // 5. Start the Redpanda container again so subsequent tests can continue
       execSync(`docker start ${containerId}`);
-      // Wait for Redpanda to resume and accept connections
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      // Wait deterministically for Redpanda to resume and accept connections
+      const healthStart = Date.now();
+      let isHealthy = false;
+      while (!isHealthy && Date.now() - healthStart < 15000) {
+        try {
+          execSync(`docker exec ${containerId} rpk cluster info`, { stdio: 'ignore' });
+          isHealthy = true;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
 
       // 6. Cleanly restart the consumer now that the broker is online
       await orderEventConsumer.onModuleInit();
@@ -384,7 +396,10 @@ describe('Asynchronous Messaging Integration Spec', () => {
   // --- Scenario 6: Poison Message and DLQ Routing ---
   it('should route permanently failing events to payments.dlq topic and mark Inbox as DLQ_SENT upon retry exhaustion', async () => {
     const eventId = randomUUID();
-    const envelope = createTestEnvelope(eventId);
+    const envelope = {
+      ...createTestEnvelope(eventId),
+      eventType: CHECK_ORDER_ELIGIBILITY,
+    };
 
     // Setup failing handler (only mock throw for target eventId)
     const failingError = new Error('Deterministic poison message handler failure');
@@ -438,7 +453,7 @@ describe('Asynchronous Messaging Integration Spec', () => {
       // Publish event to Kafka to trigger consumer attempt
       await testProducer.connect();
       await testProducer.send({
-        topic: 'payments.initiated',
+        topic: 'order.commands',
         messages: [
           {
             key: randomUUID(),

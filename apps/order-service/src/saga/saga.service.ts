@@ -305,6 +305,14 @@ export class SagaService {
       return;
     }
 
+    if (saga.isTerminal()) {
+      this.logger.info('Saga is already terminal. Safe skip.', {
+        sagaId: saga.id,
+        sagaStatus: saga.status,
+      });
+      return;
+    }
+
     // Duplicate skip guard: check if already reached or moved beyond
     const forwardChain: SagaStatus[] = [
       SagaStatus.LEDGER_PENDING,
@@ -445,6 +453,14 @@ export class SagaService {
       return;
     }
 
+    if (saga.isTerminal()) {
+      this.logger.info('Saga is already terminal. Safe skip.', {
+        sagaId: saga.id,
+        sagaStatus: saga.status,
+      });
+      return;
+    }
+
     const forwardChain: SagaStatus[] = [
       SagaStatus.LEDGER_PENDING,
       SagaStatus.LEDGER_RECORDED,
@@ -536,7 +552,7 @@ export class SagaService {
     saga.failedAt = new Date();
     saga.originService = 'risk-engine';
 
-    await this.sagaRepository.update(saga);
+    const updatedSaga = await this.sagaRepository.update(saga);
 
     this.logger.warn('Saga forward execution stopped due to payout eligibility denial. Initiating compensation.', {
       sagaId: saga.id,
@@ -544,7 +560,7 @@ export class SagaService {
     });
 
     // Initiate compensation — §6.2 Scenario 1 (only LedgerEntryRecorded completed)
-    await this.compensationCoordinator.initiateCompensation(saga, event);
+    await this.compensationCoordinator.initiateCompensation(updatedSaga, event);
   }
 
   /**
@@ -568,6 +584,14 @@ export class SagaService {
         sagaId,
         correlationId,
         eventId,
+      });
+      return;
+    }
+
+    if (saga.isTerminal()) {
+      this.logger.info('Saga is already terminal. Safe skip.', {
+        sagaId: saga.id,
+        sagaStatus: saga.status,
       });
       return;
     }
@@ -638,7 +662,7 @@ export class SagaService {
     saga.failedAt = new Date();
     saga.originService = 'balance-service';
 
-    await this.sagaRepository.update(saga);
+    const updatedSaga = await this.sagaRepository.update(saga);
 
     this.logger.warn('Saga forward execution stopped due to balance reservation failure. Initiating compensation.', {
       sagaId: saga.id,
@@ -646,7 +670,7 @@ export class SagaService {
     });
 
     // Initiate compensation — §6.2 Scenario 2 (LedgerEntryRecorded completed; balance never reserved)
-    await this.compensationCoordinator.initiateCompensation(saga, event);
+    await this.compensationCoordinator.initiateCompensation(updatedSaga, event);
   }
 
   /**
@@ -723,7 +747,7 @@ export class SagaService {
     }
 
     saga.failStep(failureReason, 'retry-scheduler');
-    await this.sagaRepository.update(saga);
+    const updatedSaga = await this.sagaRepository.update(saga);
 
     this.logger.warn('Saga forward execution halted permanently due to retry scheduler exhaustion. Initiating compensation.', {
       sagaId: saga.id,
@@ -732,7 +756,7 @@ export class SagaService {
     });
 
     // Initiate compensation — scenario determined by current saga.status
-    await this.compensationCoordinator.initiateCompensation(saga, event);
+    await this.compensationCoordinator.initiateCompensation(updatedSaga, event);
   }
 
   /**
